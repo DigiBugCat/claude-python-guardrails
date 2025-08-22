@@ -366,11 +366,11 @@ mod tests {
         assert_eq!(parse_file_size("10KB")?, 10 * 1024);
         assert_eq!(parse_file_size("5MB")?, 5 * 1024 * 1024);
         assert_eq!(parse_file_size("2GB")?, 2 * 1024 * 1024 * 1024);
-        
+
         // Test case insensitive
         assert_eq!(parse_file_size("10kb")?, 10 * 1024);
         assert_eq!(parse_file_size("5mb")?, 5 * 1024 * 1024);
-        
+
         // Test with spaces
         assert_eq!(parse_file_size(" 10MB ")?, 10 * 1024 * 1024);
 
@@ -448,7 +448,7 @@ exclude:
     #[test]
     fn test_binary_file_detection() -> Result<()> {
         let temp_dir = TempDir::new()?;
-        
+
         // Create a text file
         let text_file = temp_dir.path().join("text.txt");
         fs::write(&text_file, "This is a text file\nwith multiple lines")?;
@@ -470,7 +470,7 @@ exclude:
     #[test]
     fn test_file_size_rules() -> Result<()> {
         let temp_dir = TempDir::new()?;
-        
+
         let config = GuardrailsConfig {
             exclude: ExclusionConfig {
                 patterns: vec![],
@@ -537,21 +537,33 @@ exclude:
     #[test]
     fn test_default_config_structure() {
         let config = default_config();
-        
+
         // Should have reasonable defaults
         assert!(!config.exclude.patterns.is_empty());
         assert!(!config.exclude.python.lint_skip.is_empty());
         assert!(!config.exclude.python.test_skip.is_empty());
-        
+
         // Should exclude common Python artifacts
         assert!(config.exclude.patterns.contains(&"*.pyc".to_string()));
-        assert!(config.exclude.patterns.contains(&"__pycache__/".to_string()));
-        
+        assert!(config
+            .exclude
+            .patterns
+            .contains(&"__pycache__/".to_string()));
+
         // Should exclude migrations from linting
-        assert!(config.exclude.python.lint_skip.iter().any(|p| p.contains("migrations")));
-        
+        assert!(config
+            .exclude
+            .python
+            .lint_skip
+            .iter()
+            .any(|p| p.contains("migrations")));
+
         // Should exclude test files from testing
-        assert!(config.exclude.python.test_skip.contains(&"test_*.py".to_string()));
+        assert!(config
+            .exclude
+            .python
+            .test_skip
+            .contains(&"test_*.py".to_string()));
     }
 
     #[test]
@@ -562,11 +574,11 @@ exclude:
   patterns:
     - "*.tmp"
 "#;
-        
+
         let checker = GuardrailsChecker::from_yaml(yaml)?;
         assert!(checker.should_exclude(Path::new("test.tmp"))?);
         assert!(!checker.should_exclude(Path::new("test.py"))?);
-        
+
         // Empty python section should not cause issues
         assert!(!checker.should_exclude_lint(Path::new("anything.py"))?);
         assert!(!checker.should_exclude_test(Path::new("anything.py"))?);
