@@ -1,0 +1,192 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create-release.outputs.id }}
+      upload_url: ${{ steps.create-release.outputs.upload_url }}
+      version: ${{ steps.get-version.outputs.version }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get version from Cargo.toml
+      id: get-version
+      run: |
+        VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+        echo "version=v$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: v$VERSION"
+
+    - name: Check if release exists
+      id: check-release
+      run: |
+        VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+        if gh release view "v$VERSION" >/dev/null 2>&1; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create Release
+      id: create-release
+      if: steps.check-release.outputs.exists == 'false'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get-version.outputs.version }}
+        release_name: Release ${{ steps.get-version.outputs.version }}
+        body: |
+          # Claude Python Guardrails ${{ steps.get-version.outputs.version }}
+          
+          ## Installation
+          
+          Download the appropriate binary for your platform:
+          
+          ### macOS
+          ```bash
+          # Intel Macs
+          curl -L -o claude-python-guardrails https://github.com/${{ github.repository }}/releases/download/${{ steps.get-version.outputs.version }}/claude-python-guardrails-x86_64-apple-darwin
+          chmod +x claude-python-guardrails
+          
+          # Apple Silicon Macs
+          curl -L -o claude-python-guardrails https://github.com/${{ github.repository }}/releases/download/${{ steps.get-version.outputs.version }}/claude-python-guardrails-aarch64-apple-darwin
+          chmod +x claude-python-guardrails
+          ```
+          
+          ### Linux
+          ```bash
+          curl -L -o claude-python-guardrails https://github.com/${{ github.repository }}/releases/download/${{ steps.get-version.outputs.version }}/claude-python-guardrails-x86_64-unknown-linux-gnu
+          chmod +x claude-python-guardrails
+          ```
+          
+          ## Usage
+          ```bash
+          ./claude-python-guardrails --help
+          ```
+          
+          ## Changes
+          See commit history for details.
+        draft: false
+        prerelease: false
+
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    needs: create-release
+    if: needs.create-release.outputs.release_id
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            
+          - target: aarch64-apple-darwin
+            os: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: stable
+        targets: ${{ matrix.target }}
+
+    - name: Cache cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build binary
+      run: cargo build --release --target ${{ matrix.target }}
+
+    - name: Strip binary (Linux)
+      if: matrix.target == 'x86_64-unknown-linux-gnu'
+      run: strip target/${{ matrix.target }}/release/claude-python-guardrails
+
+    - name: Strip binary (macOS)
+      if: contains(matrix.target, 'apple')
+      run: strip target/${{ matrix.target }}/release/claude-python-guardrails
+
+    - name: Create binary name
+      id: binary-name
+      run: |
+        BINARY_NAME="claude-python-guardrails-${{ matrix.target }}"
+        echo "name=$BINARY_NAME" >> $GITHUB_OUTPUT
+
+    - name: Copy and rename binary
+      run: |
+        cp target/${{ matrix.target }}/release/claude-python-guardrails ${{ steps.binary-name.outputs.name }}
+
+    - name: Generate SHA256
+      run: |
+        sha256sum ${{ steps.binary-name.outputs.name }} > ${{ steps.binary-name.outputs.name }}.sha256
+
+    - name: Upload binary to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./${{ steps.binary-name.outputs.name }}
+        asset_name: ${{ steps.binary-name.outputs.name }}
+        asset_content_type: application/octet-stream
+
+    - name: Upload checksum to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./${{ steps.binary-name.outputs.name }}.sha256
+        asset_name: ${{ steps.binary-name.outputs.name }}.sha256
+        asset_content_type: text/plain
+
+  update-checksums:
+    name: Update Release with Checksums
+    runs-on: ubuntu-latest
+    needs: [create-release, build]
+    if: needs.create-release.outputs.release_id
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download release assets
+      run: |
+        gh release download ${{ needs.create-release.outputs.version }} --pattern "*.sha256"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create combined checksums file
+      run: |
+        cat *.sha256 > checksums.txt
+        echo "## Checksums" >> release_notes.md
+        echo '```' >> release_notes.md
+        cat checksums.txt >> release_notes.md
+        echo '```' >> release_notes.md
+
+    - name: Upload combined checksums
+      run: |
+        gh release upload ${{ needs.create-release.outputs.version }} checksums.txt
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

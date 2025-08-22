@@ -1,0 +1,26 @@
+[package]
+name = "claude-python-guardrails"
+version = "0.1.0"
+edition = "2021"
+authors = ["Andrew Sulistio <andrew@example.com>"]
+description = "Simple exclusion checker for Python projects using Claude Code"
+license = "MIT"
+keywords = ["claude", "python", "exclusion", "guardrails"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+# Configuration parsing
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+
+# Pattern matching
+globset = "0.4"
+
+# CLI interface
+clap = { version = "4.5", features = ["derive"] }
+
+# Error handling
+anyhow = "1.0"
+
+[dev-dependencies]
+tempfile = "3.12"

@@ -1,0 +1,119 @@
+# Claude Python Guardrails Configuration
+# This file defines exclusion rules for Python projects using Claude Code
+
+exclude:
+  # Global patterns to exclude everywhere
+  patterns:
+    # Python compiled files
+    - "*.pyc"
+    - "*.pyo"
+    - "*.pyd"
+    - "__pycache__/"
+    - "*.so"
+    
+    # Virtual environments
+    - ".venv/"
+    - "venv/"
+    - ".env/"
+    - "env/"
+    - "ENV/"
+    - "virtualenv/"
+    - ".virtualenv/"
+    - "pyenv/"
+    - ".pyenv/"
+    
+    # Version control
+    - ".git/"
+    - ".hg/"
+    - ".svn/"
+    
+    # Python packaging
+    - "*.egg-info/"
+    - "*.egg"
+    - "dist/"
+    - "build/"
+    - "wheels/"
+    - "*.whl"
+    
+    # Testing and coverage
+    - ".pytest_cache/"
+    - ".coverage"
+    - ".coverage.*"
+    - "htmlcov/"
+    - ".tox/"
+    - ".nox/"
+    - ".hypothesis/"
+    
+    # Type checking and linting
+    - ".mypy_cache/"
+    - ".dmypy.json"
+    - "dmypy.json"
+    - ".pyre/"
+    - ".pytype/"
+    
+    # IDE and editor files
+    - ".idea/"
+    - ".vscode/"
+    - "*.swp"
+    - "*.swo"
+    - "*~"
+    - ".DS_Store"
+    
+    # Build artifacts from other languages
+    - "target/"          # Rust builds
+    - "node_modules/"     # Node.js
+    - "vendor/"          # Go, PHP dependencies
+    
+    # Temporary files
+    - "*.tmp"
+    - "*.bak"
+    - "*.backup"
+    - "*.log"
+    - ".cache/"
+    
+    # Documentation builds
+    - "docs/_build/"
+    - "site/"
+
+  # Python-specific exclusions
+  python:
+    # Files to skip during linting
+    lint_skip:
+      # Database migrations (often auto-generated)
+      - "migrations/**"
+      - "*/migrations/**"
+      
+      # Protocol buffer generated files
+      - "*_pb2.py"
+      - "*_pb2_grpc.py"
+      
+      # Generated model files
+      - "*.generated.py"
+      - "*_generated.py"
+      
+      # Configuration files that don't need strict linting
+      - "settings/**/*.py"
+      - "config/**/*.py"
+      
+    # Files to skip during testing
+    test_skip:
+      # Test configuration files
+      - "conftest.py"
+      - "**/conftest.py"
+      
+      # Don't test test files themselves
+      - "test_*.py"
+      - "*_test.py"
+      - "tests/fixtures/**"
+      - "tests/data/**"
+
+# Additional rules for file processing
+rules:
+  # Maximum file size to process (larger files are skipped)
+  max_file_size: "10MB"
+  
+  # Skip binary files (files containing null bytes)
+  skip_binary_files: true
+  
+  # Skip files that appear to be generated
+  skip_generated_files: true
