@@ -2,24 +2,20 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use claude_python_guardrails::{
     default_config, AutomationConfig, AutomationRunner, CerebrasConfig, ExclusionAnalysis,
-    GuardrailsChecker, SmartExclusionAnalyzer,
+    GuardrailsChecker, HookInput, SmartExclusionAnalyzer,
 };
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-/// AI-powered Python automation hooks for Claude Code with Cerebras intelligence and smart linting/testing
+/// Claude Code Python automation hooks - AI-powered linting and testing automation
 #[derive(Parser)]
 #[command(name = "claude-python-guardrails")]
 #[command(
-    about = "AI-powered Python automation hooks for Claude Code with Cerebras intelligence and smart linting/testing"
+    about = "Claude Code Python automation hooks - AI-powered linting and testing automation"
 )]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-
-    /// Path to configuration file
-    #[arg(short, long, global = true)]
-    config: Option<PathBuf>,
 
     /// Verbose output
     #[arg(short, long, global = true)]
@@ -28,45 +24,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Check if a file should be excluded (general)
-    Check {
-        /// File path to check
-        file: PathBuf,
-    },
-    /// Check if a file should be excluded from linting
-    Lint {
-        /// File path to check
-        file: PathBuf,
-    },
-    /// Check if a file should be excluded from testing
-    Test {
-        /// File path to check
-        file: PathBuf,
-    },
-    /// Generate default configuration file
-    Init {
-        /// Output file path (default: guardrails.yaml)
-        #[arg(short, long, default_value = "guardrails.yaml")]
-        output: PathBuf,
-    },
-    /// Validate configuration file
-    Validate {
-        /// Configuration file to validate (default: guardrails.yaml)
-        #[arg(default_value = "guardrails.yaml")]
-        config: PathBuf,
-    },
-    /// Analyze a file using Cerebras AI for smart exclusion recommendations (PreToolUse hook compatible)
+    /// AI-powered file analysis (reads Claude Code hook JSON from stdin)
     Analyze {
-        /// File path to analyze
-        file: PathBuf,
         /// Output format (json or text)
         #[arg(long, default_value = "text")]
         format: String,
     },
-    /// Smart linting automation (Claude Code hook compatible)
-    SmartLint,
-    /// Smart testing automation (Claude Code hook compatible)
-    SmartTest,
+    /// Linting automation (reads Claude Code hook JSON from stdin)
+    Lint,
+    /// Testing automation (reads Claude Code hook JSON from stdin)
+    Test,
 }
 
 #[tokio::main]
@@ -80,113 +47,18 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Check { ref file } => {
-            let checker = load_checker(&cli)?;
-            let excluded = checker.should_exclude(file)?;
+        Commands::Analyze { ref format } => handle_analyze_command(&cli, format).await,
 
-            if cli.verbose {
-                if excluded {
-                    println!("❌ {}: EXCLUDED", file.display());
-                } else {
-                    println!("✅ {}: INCLUDED", file.display());
-                }
-            }
-
-            std::process::exit(if excluded { 1 } else { 0 });
-        }
-
-        Commands::Lint { ref file } => {
-            let checker = load_checker(&cli)?;
-            let excluded = checker.should_exclude_lint(file)?;
-
-            if cli.verbose {
-                if excluded {
-                    println!("❌ {}: EXCLUDED from linting", file.display());
-                } else {
-                    println!("✅ {}: INCLUDED for linting", file.display());
-                }
-            }
-
-            std::process::exit(if excluded { 1 } else { 0 });
-        }
-
-        Commands::Test { ref file } => {
-            let checker = load_checker(&cli)?;
-            let excluded = checker.should_exclude_test(file)?;
-
-            if cli.verbose {
-                if excluded {
-                    println!("❌ {}: EXCLUDED from testing", file.display());
-                } else {
-                    println!("✅ {}: INCLUDED for testing", file.display());
-                }
-            }
-
-            std::process::exit(if excluded { 1 } else { 0 });
-        }
-
-        Commands::Init { output } => {
-            if output.exists() {
-                return Err(anyhow::anyhow!(
-                    "Configuration file {} already exists. Use --force to overwrite.",
-                    output.display()
-                ));
-            }
-
-            let config = default_config();
-            let yaml = serde_yaml::to_string(&config)
-                .context("Failed to serialize default configuration")?;
-
-            std::fs::write(&output, yaml).with_context(|| {
-                format!("Failed to write configuration to {}", output.display())
-            })?;
-
-            println!("✅ Created default configuration: {}", output.display());
-            Ok(())
-        }
-
-        Commands::Validate { config } => match GuardrailsChecker::from_file(&config) {
-            Ok(checker) => {
-                if cli.verbose {
-                    println!("✅ Configuration is valid: {}", config.display());
-                    println!(
-                        "Global patterns: {}",
-                        checker.config().exclude.patterns.len()
-                    );
-                    println!(
-                        "Lint skip patterns: {}",
-                        checker.config().exclude.python.lint_skip.len()
-                    );
-                    println!(
-                        "Test skip patterns: {}",
-                        checker.config().exclude.python.test_skip.len()
-                    );
-                } else {
-                    println!("✅ Valid configuration");
-                }
-                Ok(())
-            }
-            Err(e) => {
-                println!("❌ Invalid configuration: {e}");
-                std::process::exit(1);
-            }
-        },
-
-        Commands::Analyze {
-            ref file,
-            ref format,
-        } => handle_analyze_command(&cli, file.as_path(), format).await,
-
-        Commands::SmartLint => {
-            let result = handle_smart_automation(&cli, "lint")?;
+        Commands::Lint => {
+            let result = handle_smart_automation(&cli, "lint").await?;
             if let Some(message) = result.message() {
                 eprintln!("{message}");
             }
             std::process::exit(result.exit_code());
         }
 
-        Commands::SmartTest => {
-            let result = handle_smart_automation(&cli, "test")?;
+        Commands::Test => {
+            let result = handle_smart_automation(&cli, "test").await?;
             if let Some(message) = result.message() {
                 eprintln!("{message}");
             }
@@ -195,74 +67,87 @@ async fn main() -> Result<()> {
     }
 }
 
-fn load_checker(cli: &Cli) -> Result<GuardrailsChecker> {
-    match &cli.config {
-        Some(config_path) => {
-            if cli.verbose {
-                println!("Loading configuration from: {}", config_path.display());
-            }
-            GuardrailsChecker::from_file(config_path)
-                .with_context(|| format!("Failed to load config from {}", config_path.display()))
-        }
-        None => {
-            // Try to find guardrails.yaml in current directory
-            let default_config_path = PathBuf::from("guardrails.yaml");
-            if default_config_path.exists() {
-                if cli.verbose {
-                    println!("Loading configuration from: guardrails.yaml");
-                }
-                GuardrailsChecker::from_file(&default_config_path)
-            } else {
-                if cli.verbose {
-                    println!("Using default configuration");
-                }
-                GuardrailsChecker::from_config(default_config())
-            }
-        }
-    }
+fn get_default_checker() -> GuardrailsChecker {
+    // Always use hardcoded default configuration for hooks
+    GuardrailsChecker::from_config(default_config())
+        .expect("Default configuration should always be valid")
 }
 
-fn handle_smart_automation(
-    cli: &Cli,
+async fn handle_smart_automation(
+    _cli: &Cli,
     operation: &str,
 ) -> Result<claude_python_guardrails::AutomationResult> {
     use claude_python_guardrails::AutomationResult;
 
-    let checker = load_checker(cli)?;
+    let checker = get_default_checker();
     let automation_config = AutomationConfig::from(&checker.config().automation);
     let runner = AutomationRunner::new(automation_config, checker);
 
     match operation {
-        "lint" => runner.handle_smart_lint(),
-        "test" => runner.handle_smart_test(),
+        "lint" => runner.handle_smart_lint().await,
+        "test" => runner.handle_smart_test().await,
         _ => Ok(AutomationResult::NoAction),
     }
 }
 
-async fn handle_analyze_command(cli: &Cli, file: &Path, format: &str) -> Result<()> {
-    if !file.exists() {
-        return Err(anyhow::anyhow!("File does not exist: {}", file.display()));
+async fn handle_analyze_command(cli: &Cli, format: &str) -> Result<()> {
+    // Read JSON input from stdin (Claude Code hook format)
+    let hook_input = match HookInput::from_stdin() {
+        Ok(input) => input,
+        Err(_) => {
+            if cli.verbose {
+                eprintln!("ℹ️  No JSON input available on stdin.");
+            }
+            std::process::exit(0);
+        }
+    };
+
+    // Only process PostToolUse events for edit tools
+    if !hook_input.should_process() {
+        if cli.verbose {
+            eprintln!("ℹ️  Ignoring event type: {}", hook_input.hook_event_name);
+        }
+        std::process::exit(0);
+    }
+
+    // Extract file path from hook input
+    let file_path = match hook_input.file_path() {
+        Some(path) => path,
+        None => {
+            if cli.verbose {
+                eprintln!("❌ No file path found in hook input");
+            }
+            std::process::exit(0);
+        }
+    };
+
+    // Check if file exists
+    if !file_path.exists() {
+        if cli.verbose {
+            eprintln!("❌ File does not exist: {}", file_path.display());
+        }
+        std::process::exit(0);
     }
 
     // Initialize Cerebras configuration
     let cerebras_config = CerebrasConfig::default();
 
-    if !cerebras_config.enabled {
-        println!("⚠️  Cerebras integration disabled. Set CEREBRAS_API_KEY environment variable to enable AI analysis.");
-        println!("Falling back to basic heuristic analysis...\n");
+    if !cerebras_config.enabled && cli.verbose {
+        eprintln!("⚠️  Cerebras integration disabled. Set CEREBRAS_API_KEY environment variable to enable AI analysis.");
+        eprintln!("Falling back to basic heuristic analysis...\n");
     }
 
     let analyzer = SmartExclusionAnalyzer::new(cerebras_config);
 
     if cli.verbose {
-        println!("🔍 Analyzing file: {}", file.display());
-        println!("Output format: {}", format);
-        println!();
+        eprintln!("🔍 Analyzing file: {}", file_path.display());
+        eprintln!("Output format: {}", format);
+        eprintln!();
     }
 
-    match analyzer.analyze_file(file).await {
+    match analyzer.analyze_file(&file_path).await {
         Ok(analysis) => {
-            display_analysis(file, &analysis, format, cli.verbose)?;
+            display_analysis(&file_path, &analysis, format, cli.verbose)?;
 
             // Analysis completed successfully - exit 0 regardless of exclusion decision
             // The exclusion recommendation is communicated through the output content
@@ -346,68 +231,5 @@ fn display_text_format(file: &Path, analysis: &ExclusionAnalysis, verbose: bool)
         println!("🔧 Debug Information:");
         println!("  • Analysis completed successfully");
         println!("  • File exists and is readable");
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[test]
-    fn test_init_command() -> Result<()> {
-        let temp_dir = TempDir::new()?;
-        let config_path = temp_dir.path().join("test_guardrails.yaml");
-
-        // Test that init creates a valid config file
-        let config = default_config();
-        let yaml = serde_yaml::to_string(&config)?;
-        fs::write(&config_path, yaml)?;
-
-        // Verify we can load the generated config
-        let checker = GuardrailsChecker::from_file(&config_path)?;
-        assert!(!checker.config().exclude.patterns.is_empty());
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_checker_loading() -> Result<()> {
-        let temp_dir = TempDir::new()?;
-        let config_path = temp_dir.path().join("guardrails.yaml");
-
-        let config_yaml = r#"
-exclude:
-  patterns:
-    - "*.tmp"
-  python:
-    lint_skip:
-      - "test_*"
-    test_skip: []
-rules:
-  max_file_size: "5MB"
-  skip_binary_files: true
-  skip_generated_files: true
-"#;
-
-        fs::write(&config_path, config_yaml)?;
-
-        let cli = Cli {
-            command: Commands::Check {
-                file: PathBuf::from("test.py"),
-            },
-            config: Some(config_path),
-            verbose: false,
-        };
-
-        let checker = load_checker(&cli)?;
-
-        // Test the loaded configuration
-        assert!(checker.should_exclude(&PathBuf::from("test.tmp"))?);
-        assert!(checker.should_exclude_lint(&PathBuf::from("test_example.py"))?);
-        assert!(!checker.should_exclude(&PathBuf::from("src/main.py"))?);
-
-        Ok(())
     }
 }

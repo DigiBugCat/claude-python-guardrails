@@ -86,6 +86,38 @@ pub struct ExclusionAnalysis {
     pub exclusion_recommendation: String,
 }
 
+/// Analysis result for comprehensive test analysis
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TestFailureAnalysis {
+    pub has_failures: bool,
+    pub summary: String,
+    pub failed_tests: Vec<FailedTest>,
+    pub analysis: String,
+    pub recommendations: String,
+    pub coverage_analysis: String,
+    pub missing_tests: Vec<String>,
+    pub quality_assessment: String,
+}
+
+/// Details of a specific failed test
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FailedTest {
+    pub test_name: String,
+    pub error_type: String,
+    pub error_message: String,
+    pub suggested_fix: String,
+}
+
+/// Analysis result for lint output
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LintAnalysis {
+    pub has_real_issues: bool,
+    pub filtered_output: String,
+    pub reasoning: String,
+    pub issue_count: u32,
+    pub recommendations: String,
+}
+
 /// Smart exclusion analyzer using Cerebras AI
 #[derive(Debug)]
 pub struct SmartExclusionAnalyzer {
@@ -621,6 +653,425 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
             file_type: "Unknown (API unavailable)".to_string(),
             purpose: "Unknown - assuming requires full validation".to_string(),
             exclusion_recommendation: "⚠️ Could not analyze file due to API error. File will be processed normally. Ensure tests exist for this file if it contains business logic.".to_string(),
+        }
+    }
+
+    /// Analyze test output comprehensively using Cerebras AI
+    pub async fn analyze_test_output(
+        &self,
+        output: &str,
+        project_path: &Path,
+        source_file: Option<&Path>,
+    ) -> Result<TestFailureAnalysis> {
+        if !self.config.enabled {
+            return Ok(self.basic_test_failure_analysis(output));
+        }
+
+        // Handle API errors gracefully with basic analysis
+        match self
+            .call_cerebras_comprehensive_test_analysis(output, project_path, source_file)
+            .await
+        {
+            Ok(analysis) => Ok(analysis),
+            Err(e) => {
+                eprintln!("Warning: Cerebras test analysis failed: {}", e);
+                Ok(self.basic_test_failure_analysis(output))
+            }
+        }
+    }
+
+    /// Analyze lint output using Cerebras AI
+    pub async fn analyze_lint_output(
+        &self,
+        output: &str,
+        file_path: Option<&Path>,
+    ) -> Result<LintAnalysis> {
+        if !self.config.enabled {
+            return Ok(self.basic_lint_analysis(output));
+        }
+
+        // Handle API errors gracefully with basic analysis
+        match self.call_cerebras_lint_analysis(output, file_path).await {
+            Ok(analysis) => Ok(analysis),
+            Err(e) => {
+                eprintln!("Warning: Cerebras lint analysis failed: {}", e);
+                Ok(self.basic_lint_analysis(output))
+            }
+        }
+    }
+
+    /// Make comprehensive API call to Cerebras for test analysis
+    async fn call_cerebras_comprehensive_test_analysis(
+        &self,
+        output: &str,
+        project_path: &Path,
+        source_file: Option<&Path>,
+    ) -> Result<TestFailureAnalysis> {
+        let prompt = self.create_comprehensive_test_prompt(output, project_path, source_file);
+
+        let request = ChatRequest {
+            model: self.config.model.clone(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: prompt,
+            }],
+            temperature: 0.3,
+            top_p: 0.9,
+            response_format: ResponseFormat {
+                format_type: "json_schema".to_string(),
+                json_schema: JsonSchema {
+                    name: "test_failure_analysis".to_string(),
+                    description: "Analysis of test failure output".to_string(),
+                    schema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "has_failures": {
+                                "type": "boolean",
+                                "description": "Whether there are actual test failures"
+                            },
+                            "summary": {
+                                "type": "string",
+                                "description": "Brief summary of test execution results"
+                            },
+                            "failed_tests": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "test_name": {"type": "string"},
+                                        "error_type": {"type": "string"},
+                                        "error_message": {"type": "string"},
+                                        "suggested_fix": {"type": "string"}
+                                    },
+                                    "required": ["test_name", "error_type", "error_message", "suggested_fix"]
+                                }
+                            },
+                            "analysis": {
+                                "type": "string",
+                                "description": "Detailed analysis of test execution and failures"
+                            },
+                            "recommendations": {
+                                "type": "string",
+                                "description": "Specific actionable recommendations for immediate fixes"
+                            },
+                            "coverage_analysis": {
+                                "type": "string",
+                                "description": "Analysis of test coverage gaps and missing scenarios"
+                            },
+                            "missing_tests": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of specific test functions or scenarios that should be added"
+                            },
+                            "quality_assessment": {
+                                "type": "string",
+                                "description": "Assessment of overall test quality and completeness"
+                            }
+                        },
+                        "required": ["has_failures", "summary", "failed_tests", "analysis", "recommendations", "coverage_analysis", "missing_tests", "quality_assessment"]
+                    }),
+                },
+            },
+        };
+
+        let response = self
+            .client
+            .post(format!("{}/chat/completions", self.config.base_url))
+            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to send request to Cerebras API")?;
+
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("API request failed: {}", response.status()));
+        }
+
+        let chat_response: ChatResponse = response
+            .json()
+            .await
+            .context("Failed to parse response JSON")?;
+
+        let content = chat_response
+            .choices
+            .first()
+            .and_then(|choice| choice.message.content.as_ref())
+            .context("No content in API response")?;
+
+        let analysis: TestFailureAnalysis =
+            serde_json::from_str(content).context("Failed to parse analysis JSON")?;
+
+        Ok(analysis)
+    }
+
+    /// Make API call to Cerebras for lint output analysis
+    async fn call_cerebras_lint_analysis(
+        &self,
+        output: &str,
+        file_path: Option<&Path>,
+    ) -> Result<LintAnalysis> {
+        let prompt = self.create_lint_output_prompt(output, file_path);
+
+        let request = ChatRequest {
+            model: self.config.model.clone(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: prompt,
+            }],
+            temperature: 0.3,
+            top_p: 0.9,
+            response_format: ResponseFormat {
+                format_type: "json_schema".to_string(),
+                json_schema: JsonSchema {
+                    name: "lint_analysis".to_string(),
+                    description: "Analysis of linter output".to_string(),
+                    schema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "has_real_issues": {
+                                "type": "boolean",
+                                "description": "Whether there are real issues that need fixing"
+                            },
+                            "filtered_output": {
+                                "type": "string",
+                                "description": "Linter output with only real issues (empty if no real issues)"
+                            },
+                            "reasoning": {
+                                "type": "string",
+                                "description": "Brief explanation of what was filtered and why"
+                            },
+                            "issue_count": {
+                                "type": "integer",
+                                "description": "Number of real issues found"
+                            },
+                            "recommendations": {
+                                "type": "string",
+                                "description": "Specific recommendations for fixing the issues"
+                            }
+                        },
+                        "required": ["has_real_issues", "filtered_output", "reasoning", "issue_count", "recommendations"]
+                    }),
+                },
+            },
+        };
+
+        let response = self
+            .client
+            .post(format!("{}/chat/completions", self.config.base_url))
+            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to send request to Cerebras API")?;
+
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("API request failed: {}", response.status()));
+        }
+
+        let chat_response: ChatResponse = response
+            .json()
+            .await
+            .context("Failed to parse response JSON")?;
+
+        let content = chat_response
+            .choices
+            .first()
+            .and_then(|choice| choice.message.content.as_ref())
+            .context("No content in API response")?;
+
+        let analysis: LintAnalysis =
+            serde_json::from_str(content).context("Failed to parse analysis JSON")?;
+
+        Ok(analysis)
+    }
+
+    /// Create comprehensive prompt for test analysis including source code and coverage analysis
+    fn create_comprehensive_test_prompt(
+        &self,
+        output: &str,
+        project_path: &Path,
+        source_file: Option<&Path>,
+    ) -> String {
+        let mut source_content = String::new();
+        let mut test_content = String::new();
+        let mut file_context = String::new();
+
+        // Read source file if provided
+        if let Some(source_path) = source_file {
+            file_context = format!("Source file: {}", source_path.display());
+
+            if let Ok(content) = self.read_file_content(source_path) {
+                source_content =
+                    format!("\n\nSource code being tested:\n```python\n{}\n```", content);
+            }
+
+            // Try to find corresponding test file
+            let source_name = source_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
+            let possible_test_paths = vec![
+                format!("test_{}.py", source_name),
+                format!("tests/test_{}.py", source_name),
+                format!("tests/unit/test_{}.py", source_name),
+                format!("test/test_{}.py", source_name),
+            ];
+
+            for test_path_str in &possible_test_paths {
+                let test_path = project_path.join(test_path_str);
+                if test_path.exists() {
+                    if let Ok(content) = self.read_file_content(&test_path) {
+                        test_content = format!(
+                            "\n\nExisting test file ({}): \n```python\n{}\n```",
+                            test_path.display(),
+                            content
+                        );
+                        break;
+                    }
+                }
+            }
+
+            if test_content.is_empty() {
+                test_content = "\n\n⚠️ No test file found for this source file.".to_string();
+            }
+        }
+
+        format!(
+            r#"You are an expert Python developer conducting a comprehensive test analysis.
+
+Project: {}
+{}{}{}
+
+Test execution output:
+```
+{}
+```
+
+Provide a comprehensive analysis covering:
+
+## 1. Test Execution Analysis
+- **Summary**: What happened? (passed/failed/errors)
+- **Failed Tests**: For each failure, identify:
+  - Test name and location
+  - Error type (AssertionError, ImportError, fixture issues, etc.)
+  - Root cause analysis
+  - Specific fix needed
+
+## 2. Test Coverage & Completeness Analysis
+Analyze the source code and existing tests to determine:
+- **Coverage gaps**: What functionality lacks tests?
+- **Missing test scenarios**: Edge cases, error conditions, boundary values
+- **Test quality**: Are tests comprehensive enough?
+
+## 3. Test Improvement Recommendations
+- **New tests needed**: Specific test functions to add with their purpose
+- **Existing test improvements**: How to make current tests better
+- **Test structure**: Better organization, fixtures, parameterization
+- **Performance considerations**: Slow tests, redundant tests
+
+## 4. Actionable Next Steps
+Provide SPECIFIC, IMMEDIATE actions:
+- Commands to run for debugging
+- Code changes needed (with examples)
+- New test functions to write (with names and purposes)
+- Dependencies or configuration fixes
+
+## 5. Quality Assessment
+Rate the current test suite (if tests exist):
+- Completeness: Does it test all functionality? 
+- Quality: Are tests well-written and maintainable?
+- Missing scenarios: What important cases are untested?
+
+Focus on being COMPREHENSIVE, SPECIFIC, and ACTIONABLE. Even if tests pass, suggest improvements and additional test coverage."#,
+            project_path.display(),
+            file_context,
+            source_content,
+            test_content,
+            output
+        )
+    }
+
+    /// Create prompt for lint output analysis  
+    fn create_lint_output_prompt(&self, output: &str, file_path: Option<&Path>) -> String {
+        let file_context = if let Some(path) = file_path {
+            format!("\nFile being linted: {}", path.display())
+        } else {
+            String::new()
+        };
+
+        format!(
+            r#"You are an expert Python developer analyzing linter output.{}
+
+Linter output:
+```
+{}
+```
+
+Analyze this linter output and determine which issues are real problems vs false positives.
+
+Common false positives to filter out:
+- TC003/TC004 errors about imports when Pydantic models need types at runtime for validation
+- Import errors for types that are actually needed for runtime validation (like Callable, Awaitable in Pydantic models)
+- Issues with TYPE_CHECKING blocks when the types are needed by Pydantic Field definitions
+- "Moving imports into TYPE_CHECKING block" suggestions when those imports are used in Pydantic model fields
+
+Remember that Pydantic needs certain types at runtime for validation, not just for type checking.
+
+Provide:
+1. **Real Issues**: Filter out false positives and return only issues that need fixing
+2. **Issue Count**: Number of real issues found
+3. **Reasoning**: Brief explanation of what was filtered and why
+4. **Recommendations**: Specific suggestions for fixing the real issues
+
+If all issues are false positives, return empty filtered_output and explain why in the reasoning."#,
+            file_context, output
+        )
+    }
+
+    /// Basic test failure analysis when AI is not available
+    fn basic_test_failure_analysis(&self, output: &str) -> TestFailureAnalysis {
+        let has_failures =
+            output.contains("FAILED") || output.contains("ERROR") || output.contains("FAIL");
+        let line_count = output.lines().count();
+
+        TestFailureAnalysis {
+            has_failures,
+            summary: if has_failures {
+                format!("Test failures detected in {} lines of output", line_count)
+            } else {
+                "No clear test failures detected".to_string()
+            },
+            failed_tests: vec![], // Can't parse specific tests without AI
+            analysis: "Basic analysis without AI - full output shown".to_string(),
+            recommendations: if has_failures {
+                "Review the test output above for specific failure details. Run tests individually with -v flag for more details.".to_string()
+            } else {
+                "Tests appear to have passed. Consider reviewing test coverage.".to_string()
+            },
+            coverage_analysis:
+                "AI analysis not available. Consider manually reviewing test coverage.".to_string(),
+            missing_tests: vec![], // Can't determine without AI analysis
+            quality_assessment: "Unable to assess test quality without AI analysis.".to_string(),
+        }
+    }
+
+    /// Basic lint analysis when AI is not available
+    fn basic_lint_analysis(&self, output: &str) -> LintAnalysis {
+        let has_issues = !output.trim().is_empty();
+        let line_count = output.lines().count();
+
+        LintAnalysis {
+            has_real_issues: has_issues,
+            filtered_output: output.to_string(),
+            reasoning: "Basic analysis without AI - showing all linter output".to_string(),
+            issue_count: line_count as u32,
+            recommendations: if has_issues {
+                "Review the linter output above and fix the reported issues.".to_string()
+            } else {
+                "No linting issues detected.".to_string()
+            },
         }
     }
 }

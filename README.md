@@ -1,43 +1,174 @@
 # Claude Python Guardrails
 
-**AI-powered Python automation system for Claude Code** - intelligent file exclusion + automated linting & testing with Cerebras AI. A drop-in replacement for generic smart-lint/smart-test hooks with Python-optimized patterns, AI-powered analysis, and built-in tool discovery.
+**Claude Code Python automation hooks** - AI-powered linting and testing automation with Cerebras intelligence. Drop-in replacement for generic smart-lint/smart-test hooks with Python-optimized patterns and intelligent file analysis.
 
-## ⚡ What's New: Smart Automation
+## ⚡ What This Is
 
-**Claude Python Guardrails v0.1.0** adds full automation capabilities equivalent to smart-lint.sh/smart-test.sh hooks but **Python-specific** and **faster**:
+**Claude Python Guardrails** is designed exclusively for Claude Code hooks. It provides:
 
-- **🎯 Auto-discovery**: Finds `ruff`, `flake8`, `pylint`, `pytest` automatically  
-- **🔒 Concurrency control**: PID-based locking with configurable cooldowns
-- **⚡ Zero-config**: Works out of the box with Python projects
-- **📋 Claude Code integration**: Drop-in replacement for generic hooks
-- **🧠 Smart exclusions**: Context-aware patterns (lint vs test vs general)
+- **🎯 Linting automation**: `lint` command for Claude Code PostToolUse hooks
+- **🧪 Testing automation**: `test` command for Claude Code PostToolUse hooks  
+- **🤖 AI-powered file analysis**: `analyze` command with Cerebras integration
+- **⚡ Zero standalone usage**: Only works as Claude Code hooks (by design)
 
-## 🤖 AI-Powered Analysis with Cerebras
+## 🚀 Installation
 
-**NEW**: Intelligent file analysis using Cerebras LLM API for smarter exclusion decisions beyond simple pattern matching.
-
-### Setup
+#### Option 1: Install from Source (Recommended)
 
 ```bash
-# Set your Cerebras API key
-export CEREBRAS_API_KEY="your-api-key-here"
-
-# Analyze any file with AI
-claude-python-guardrails analyze src/models.py
+# Clone and install system-wide
+git clone https://github.com/DigiBugCat/claude-python-guardrails
+cd claude-python-guardrails
+cargo install --path .
 ```
 
-### What It Does
+This installs the binary to `~/.cargo/bin/claude-python-guardrails`.
 
-- **Understands file purpose**: Distinguishes between business logic, type definitions, configs, and generated code
-- **Context-aware decisions**: Different recommendations for linting vs testing vs general processing  
-- **Smart reasoning**: Provides clear explanations for why files should/shouldn't be processed
-- **Conservative fallback**: When API is unavailable, assumes files need full processing (safe default)
-
-### Example Output
+#### Option 2: Manual Build
 
 ```bash
-$ claude-python-guardrails analyze src/user_model.py
+# Clone and build locally
+git clone https://github.com/DigiBugCat/claude-python-guardrails
+cd claude-python-guardrails
+cargo build --release
 
+# Binary will be at: ./target/release/claude-python-guardrails
+```
+
+#### macOS PATH Setup
+
+If `claude-python-guardrails` command is not found after installation:
+
+```bash
+# Add Cargo bin directory to your PATH
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# Or for bash users
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bash_profile
+source ~/.bash_profile
+```
+
+#### Verify Installation
+
+```bash
+# Check if installed correctly
+claude-python-guardrails --version
+
+# Should output: claude-python-guardrails 1.0.0
+```
+
+## 🔧 Claude Code Hook Setup
+
+### Basic Hook Configuration
+
+Add to your `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-python-guardrails lint",
+            "timeout": 30
+          },
+          {
+            "type": "command", 
+            "command": "claude-python-guardrails test",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Advanced Hook Configuration with AI Analysis
+
+For AI-powered exclusion decisions, first set your Cerebras API key:
+
+```bash
+# Add to your shell profile (~/.bashrc, ~/.zshrc, etc.)
+export CEREBRAS_API_KEY="your-api-key-here"
+```
+
+Then add AI analysis to your hooks:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-python-guardrails analyze --format json",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "claude-python-guardrails lint",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "claude-python-guardrails test",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## 🔍 Commands
+
+All commands are designed to work exclusively with Claude Code hook JSON input via stdin. They do not accept file path arguments.
+
+### `lint`
+
+Automatically discovers and runs Python linters (ruff → flake8 → pylint):
+
+```bash
+# Used in Claude Code hooks only - reads JSON from stdin
+claude-python-guardrails lint
+```
+
+**Exit codes**: `0` = silent success, `2` = show message (success or error)
+
+### `test`
+
+Automatically discovers and runs Python test runners (pytest → unittest):
+
+```bash
+# Used in Claude Code hooks only - reads JSON from stdin  
+claude-python-guardrails test
+```
+
+**Exit codes**: `0` = silent success, `2` = show message (success or error)
+
+### `analyze`
+
+AI-powered file analysis using Cerebras for intelligent exclusion recommendations:
+
+```bash
+# Used in Claude Code hooks only - reads JSON from stdin
+claude-python-guardrails analyze
+
+# JSON output for programmatic use
+claude-python-guardrails analyze --format json
+```
+
+#### Example Analysis Output
+
+```bash
 📁 File Analysis: src/user_model.py
 ════════════════════════════════════════════════════════════
 
@@ -58,348 +189,109 @@ actually needed at runtime for Pydantic field validation.
 Add to lint_skip: ["**/models.py", "*_model.py"] to avoid TC003/TC004 false positives while keeping general processing and testing enabled.
 ```
 
-### Claude Code Hook Usage
+## 🛠️ How It Works
 
-Replace your existing hooks with:
+### Hook Integration
 
-```bash
-# Instead of ~/.claude/hooks/smart-lint.sh
-claude-python-guardrails smart-lint
+1. **PostToolUse Event**: Claude Code sends JSON to stdin when you edit files
+2. **File Analysis**: The tool extracts the file path from the JSON
+3. **Smart Processing**: Runs appropriate linters/tests based on file context
+4. **Exit Codes**: Returns `0` (continue) or `2` (show message) to Claude Code
 
-# Instead of ~/.claude/hooks/smart-test.sh  
-claude-python-guardrails smart-test
+### Example Hook JSON Input
+
+```json
+{
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Edit", 
+  "tool_input": {
+    "file_path": "src/models.py"
+  }
+}
 ```
 
-**Exit codes match hooks exactly**: `0` = silent, `2` = show message (success or error)
+### Automation Features
 
-> **📖 Full Claude Code Integration Guide**: See [CLAUDE_CODE_HOOKS.md](./CLAUDE_CODE_HOOKS.md) for complete hook configuration, troubleshooting, and advanced usage.
+- **🔍 Auto-discovery**: Finds `ruff`, `flake8`, `pylint`, `pytest`, `unittest`
+- **📂 Project root detection**: Walks up to find `pyproject.toml`, `setup.py`, etc.
+- **🔒 PID-based locking**: Prevents concurrent runs with configurable cooldowns
+- **🧠 Smart exclusions**: Context-aware patterns for different file types
+- **⏱️ Timeout protection**: Configurable command timeouts
 
-## 🚀 Quick Start
+## 🎯 Success Messages
 
-### Installation
+- **Lint success**: "👉 Lints pass. Continue with your task."
+- **Test success**: "👉 Tests pass. Continue with your task."
 
-```bash
-# Clone and build
-git clone https://github.com/DigiBugCat/claude-python-guardrails
-cd claude-python-guardrails
-cargo build --release
+## ⛔ Error Messages
 
-# Or install directly from source
-cargo install --path .
-```
+- **Lint failure**: "⛔ BLOCKING: Run 'cd /path/to/project && ruff check .' to fix lint failures"
+- **Test failure**: "⛔ BLOCKING: Run 'cd /path/to/project && pytest' to fix test failures"
 
-### File Exclusion Usage
+## 🤖 AI Analysis with Cerebras
 
-```bash
-# Generate default configuration
-claude-python-guardrails init
-
-# Check if a file should be excluded
-claude-python-guardrails check src/main.py
-
-# Check for linting specifically
-claude-python-guardrails lint migrations/001_initial.py
-
-# Check for testing specifically  
-claude-python-guardrails test conftest.py
-
-# Validate configuration
-claude-python-guardrails validate
-```
-
-## 📝 Configuration
-
-The tool uses `guardrails.yaml` for configuration. Generate a default one with:
+Set your API key to enable intelligent file analysis:
 
 ```bash
-claude-python-guardrails init
-```
-
-### Example Configuration
-
-```yaml
-exclude:
-  patterns:
-    - "*.pyc"
-    - "__pycache__/"
-    - ".venv/**"
-    - "target/**"
-    
-  python:
-    lint_skip:
-      - "migrations/**"
-      - "*_pb2.py"
-      - "*.generated.py"
-    test_skip:
-      - "conftest.py"
-      - "test_*.py"
-      - "tests/fixtures/**"
-
-rules:
-  max_file_size: "10MB"
-  skip_binary_files: true
-  skip_generated_files: true
-
-automation:
-  lint:
-    enabled: true
-    cooldown_seconds: 2
-    timeout_seconds: 20
-    preferred_tool: "ruff"  # or "flake8", "pylint"
-  test:
-    enabled: true
-    cooldown_seconds: 2
-    timeout_seconds: 20
-    preferred_tool: "pytest"  # or "unittest"
-```
-
-## 🔧 CLI Commands
-
-### `check <file>`
-Check if a file should be excluded from any processing.
-
-```bash
-claude-python-guardrails check src/main.py
-# Exit code: 0 = include, 1 = exclude
-```
-
-### `lint <file>`
-Check if a file should be excluded from linting.
-
-```bash
-claude-python-guardrails lint migrations/001_initial.py
-# Exit code: 1 (excluded from linting)
-```
-
-### `test <file>`
-Check if a file should be excluded from testing.
-
-```bash
-claude-python-guardrails test conftest.py
-# Exit code: 1 (excluded from testing)
-```
-
-### `init`
-Generate default configuration file.
-
-```bash
-claude-python-guardrails init
-# Creates: guardrails.yaml
-
-claude-python-guardrails init -o custom-config.yaml  
-# Creates: custom-config.yaml
-```
-
-### `validate`
-Validate configuration file syntax.
-
-```bash
-claude-python-guardrails validate
-# ✅ Valid configuration
-
-claude-python-guardrails validate custom-config.yaml
-# Validates specific file
-```
-
-### `analyze` 🤖 **NEW**
-AI-powered file analysis using Cerebras for intelligent exclusion recommendations.
-
-```bash
-claude-python-guardrails analyze src/models.py
-# Uses Cerebras AI to analyze file purpose and provide exclusion recommendations
-
-claude-python-guardrails analyze src/config.py --format json
-# Returns structured JSON output for programmatic use
-
-# Requires CEREBRAS_API_KEY environment variable
 export CEREBRAS_API_KEY="your-api-key-here"
 ```
 
-### `smart-lint` ⚡ **NEW**
-Smart linting automation for Claude Code hooks.
+### What AI Analysis Provides
+
+- **File type detection**: Distinguishes between business logic, models, configs, tests
+- **Context-aware recommendations**: Different advice for linting vs testing
+- **Smart reasoning**: Clear explanations for exclusion decisions
+- **Configuration suggestions**: Actionable advice for guardrails.yaml patterns
+
+### Conservative Fallback
+
+When the Cerebras API is unavailable, the tool assumes files need full processing (safe default behavior).
+
+## 🔧 Configuration
+
+The tool uses hardcoded sensible defaults optimized for Python projects. No external configuration files are required.
+
+### Built-in Exclusion Patterns
+
+**Global exclusions** (all operations):
+- `*.pyc`, `__pycache__/`
+- `.venv/**`, `venv/**` 
+- `target/**`, `node_modules/**`
+- `.git/**`, `.pytest_cache/**`
+
+**Lint exclusions**:
+- `migrations/**`
+- `*_pb2.py`, `*_pb2_grpc.py`
+- `*.generated.py`, `*_generated.py`
+
+**Test exclusions**:
+- `conftest.py`
+- `test_*.py`, `*_test.py`
+- `tests/fixtures/**`
+
+## 🔧 Troubleshooting
+
+### Hooks Not Running
+
+1. **Check registration**: Run `/hooks` in Claude Code
+2. **Verify binary path**: Ensure `claude-python-guardrails` is in PATH
+3. **Test manually**: Create test JSON and pipe to the command
+4. **Check permissions**: Ensure binary is executable
+5. **Restart Claude Code**: Hooks load at startup
+
+### Debug Mode
 
 ```bash
-# Automatically discovers and runs Python linters (ruff → flake8 → pylint)
-claude-python-guardrails smart-lint
+# Test with sample hook JSON
+echo '{"hook_event_name":"PostToolUse","tool_name":"Edit","tool_input":{"file_path":"test.py"}}' | claude-python-guardrails lint
 
-# Reads JSON from stdin, walks up to find project root
-# Exit codes: 0 = silent, 2 = show message (success/error)
+# Use verbose mode
+echo '{"hook_event_name":"PostToolUse","tool_name":"Edit","tool_input":{"file_path":"test.py"}}' | claude-python-guardrails -v lint
 ```
 
-### `smart-test` ⚡ **NEW**
-Smart testing automation for Claude Code hooks.
+## 📚 Related Documentation
 
-```bash
-# Automatically discovers and runs Python test runners (pytest → unittest)
-claude-python-guardrails smart-test  
-
-# Reads JSON from stdin, walks up to find project root
-# Exit codes: 0 = silent, 2 = show message (success/error)
-```
-
-## 🎯 Use Cases
-
-### Integration with Scripts
-
-```bash
-#!/bin/bash
-# Smart linting script
-
-for file in $(find . -name "*.py"); do
-    if claude-python-guardrails lint "$file"; then
-        echo "✅ Including $file for linting"
-        ruff check "$file"
-    else
-        echo "⏭️  Skipping $file (excluded)"
-    fi
-done
-```
-
-### Claude Code Integration
-
-Replace the existing exclusion logic in `.claude/hooks/smart-lint.sh`:
-
-```bash
-# Check if file should be excluded
-if claude-python-guardrails lint "$file_path"; then
-    # File is included, proceed with linting
-    run_linting_tools "$file_path"
-else
-    # File is excluded, skip
-    log_debug "Skipping $file_path (excluded by guardrails)"
-    exit 0
-fi
-```
-
-### Exit Codes
-
-- `0`: File should be **included** (not excluded)
-- `1`: File should be **excluded**
-- `2`: Error occurred
-
-### Verbose Output
-
-Use `-v` for detailed information:
-
-```bash
-claude-python-guardrails -v check src/main.py
-# ✅ src/main.py: INCLUDED
-
-claude-python-guardrails -v lint migrations/001_initial.py  
-# ❌ migrations/001_initial.py: EXCLUDED from linting
-```
-
-## 📂 Project Structure
-
-```
-claude-python-guardrails/
-├── Cargo.toml           # Rust dependencies
-├── README.md            # This file  
-├── guardrails.yaml      # Default configuration
-└── src/
-    ├── main.rs          # CLI interface
-    └── lib.rs           # Core exclusion logic
-```
-
-## 🛠️ Configuration Details
-
-### Global Patterns
-Apply to all operations (lint, test, general):
-
-```yaml
-exclude:
-  patterns:
-    - "*.pyc"           # Compiled Python
-    - "__pycache__/"    # Python cache dirs
-    - ".venv/"          # Virtual environments
-    - "target/"         # Rust build artifacts
-```
-
-### Python-Specific Exclusions
-
-#### Lint Skip
-Files to exclude from linting only:
-
-```yaml
-exclude:
-  python:
-    lint_skip:
-      - "migrations/"     # Database migrations
-      - "*_pb2.py"        # Protocol buffers
-      - "*.generated.py"  # Generated code
-```
-
-#### Test Skip  
-Files to exclude from testing only:
-
-```yaml
-exclude:
-  python:
-    test_skip:
-      - "conftest.py"     # Test configuration
-      - "test_*.py"       # Test files themselves
-```
-
-### Rules
-
-Additional file-based exclusions:
-
-```yaml
-rules:
-  max_file_size: "10MB"        # Skip large files
-  skip_binary_files: true      # Skip files with null bytes
-  skip_generated_files: true   # Skip detected generated files
-```
-
-## 🔍 Generated File Detection
-
-The tool automatically detects generated files based on common patterns:
-
-- `*_pb2.py` (Protocol buffers)
-- `*_pb2_grpc.py` (gRPC)  
-- `*.generated.py`
-- `*_generated.py`
-- Files in `generated/` directories
-- `*.gen.*` patterns
-
-## 🚢 Examples
-
-### Real-World Integration
-
-```bash
-# In your Makefile
-lint:
-	@for file in $$(find . -name "*.py"); do \
-		if claude-python-guardrails lint "$$file"; then \
-			ruff check "$$file" || exit 1; \
-		fi; \
-	done
-
-test:  
-	@for file in $$(find . -name "*.py"); do \
-		if claude-python-guardrails test "$$file"; then \
-			echo "Testing $$file..."; \
-			pytest "tests/test_$$(basename $$file)" || exit 1; \
-		fi; \
-	done
-```
-
-### Custom Configuration Path
-
-```bash
-claude-python-guardrails -c /path/to/custom.yaml check file.py
-```
-
-## 📊 Performance
-
-- **Fast**: Compiled Rust binary with minimal dependencies
-- **Efficient**: Glob pattern matching with `globset` crate
-- **Smart**: Context-aware exclusions (lint vs test vs general)
-
-## 📚 Documentation
-
-- **[Claude Code Hooks Integration](./CLAUDE_CODE_HOOKS.md)** - Complete guide to setting up automation hooks
-- **[Configuration Reference](./guardrails.yaml)** - Example YAML configuration with all options
+- **[Claude Code Hooks Integration](./CLAUDE_CODE_HOOKS.md)** - Complete setup guide
 - **[Architecture Guide](./CLAUDE.md)** - Development and contribution guide
 
 ## 🙏 Acknowledgments
@@ -420,4 +312,4 @@ MIT License - see LICENSE file for details
 
 ---
 
-**Claude Python Guardrails** - Simple, fast, and focused exclusion checking for Python projects.
+**Claude Python Guardrails** - Purpose-built automation hooks for Claude Code Python projects.

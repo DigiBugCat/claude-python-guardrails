@@ -55,7 +55,6 @@ jobs:
       run: |
         ./target/release/claude-python-guardrails --help
         ./target/release/claude-python-guardrails --version
-        ./target/release/claude-python-guardrails check src/main.py
         echo "Exit code: $?"
 
     - name: Run integration tests (skip for now due to CI compatibility)

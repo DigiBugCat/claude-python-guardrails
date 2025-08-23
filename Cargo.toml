@@ -1,9 +1,9 @@
 [package]
 name = "claude-python-guardrails"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Andrew Sulistio <andrew@example.com>"]
-description = "AI-powered Python automation hooks for Claude Code with Cerebras intelligence and smart linting/testing"
+description = "Claude Code Python automation hooks - AI-powered linting and testing automation (hooks-only)"
 license = "MIT"
 keywords = ["claude", "python", "automation", "hooks", "linting", "cerebras", "ai"]
 categories = ["command-line-utilities", "development-tools", "development-tools::testing"]
