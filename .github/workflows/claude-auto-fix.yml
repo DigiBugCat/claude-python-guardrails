@@ -1,0 +1,181 @@
+name: Claude Auto-Fix PR Failures
+
+on:
+  status: 
+  check_run:
+    types: [completed]
+
+jobs:
+  auto-fix:
+    # Only run on failed CI checks for PRs
+    if: |
+      (github.event_name == 'status' && github.event.state == 'failure') ||
+      (github.event_name == 'check_run' && github.event.check_run.conclusion == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      checks: read
+      id-token: write
+    
+    steps:
+      - name: Get PR information
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${context.sha}`,
+              state: 'open'
+            });
+            
+            if (prs.length > 0) {
+              const pr = prs[0];
+              core.setOutput('pr_number', pr.number);
+              core.setOutput('pr_head_ref', pr.head.ref);
+              core.setOutput('pr_head_sha', pr.head.sha);
+              core.setOutput('has_pr', 'true');
+              
+              // Check if this PR already has an auto-fix attempt recently
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number
+              });
+              
+              const recentAutoFix = comments.find(comment => 
+                comment.user.login === 'github-actions[bot]' && 
+                comment.body.includes('🤖 Auto-fix attempt') &&
+                new Date() - new Date(comment.created_at) < 60 * 60 * 1000 // 1 hour
+              );
+              
+              core.setOutput('recent_auto_fix', recentAutoFix ? 'true' : 'false');
+            } else {
+              core.setOutput('has_pr', 'false');
+            }
+
+      - name: Skip if no PR or recent auto-fix
+        if: steps.pr-info.outputs.has_pr != 'true' || steps.pr-info.outputs.recent_auto_fix == 'true'
+        run: |
+          echo "Skipping auto-fix: no PR found or recent auto-fix attempt detected"
+          exit 0
+
+      - name: Checkout PR branch
+        if: steps.pr-info.outputs.has_pr == 'true' && steps.pr-info.outputs.recent_auto_fix != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr-info.outputs.pr_head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Get CI failure details
+        if: steps.pr-info.outputs.has_pr == 'true' && steps.pr-info.outputs.recent_auto_fix != 'true'
+        id: ci-details
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: checkRuns } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: '${{ steps.pr-info.outputs.pr_head_sha }}'
+            });
+            
+            const failedChecks = checkRuns.check_runs.filter(run => 
+              run.conclusion === 'failure' || run.conclusion === 'cancelled'
+            );
+            
+            let failureDetails = '';
+            for (const check of failedChecks) {
+              failureDetails += `## Failed Check: ${check.name}\n`;
+              failureDetails += `Status: ${check.conclusion}\n`;
+              if (check.output && check.output.summary) {
+                failureDetails += `Summary: ${check.output.summary}\n`;
+              }
+              failureDetails += `URL: ${check.html_url}\n\n`;
+            }
+            
+            core.setOutput('failure_details', failureDetails);
+
+      - name: Run Claude Auto-Fix
+        if: steps.pr-info.outputs.has_pr == 'true' && steps.pr-info.outputs.recent_auto_fix != 'true'
+        id: claude-fix
+        uses: anthropics/claude-code-action@beta
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          
+          # Use Opus for more complex problem solving
+          model: "claude-opus-4-1-20250805"
+          
+          # Allow Claude to run necessary build/test commands and make fixes
+          allowed_tools: |
+            Bash(cargo fmt),
+            Bash(cargo clippy --all-targets --all-features -- -D warnings),
+            Bash(cargo test),
+            Bash(cargo build --release),
+            Bash(git add *),
+            Bash(git commit -m *),
+            Bash(git push)
+          
+          direct_prompt: |
+            🤖 **AUTO-FIX MODE**: This PR has failing CI checks that need to be fixed automatically.
+            
+            ## CI Failure Details:
+            ${{ steps.ci-details.outputs.failure_details }}
+            
+            ## Your Task:
+            1. **Analyze the CI failures** - Look at the specific errors reported
+            2. **Run local tests** to reproduce the failures: `cargo test`
+            3. **Fix the issues** - This could be:
+               - Formatting issues: `cargo fmt`
+               - Clippy warnings: Fix code issues flagged by clippy
+               - Test failures: Update tests to match code changes
+               - Build errors: Fix compilation issues
+            4. **Verify the fixes** - Run tests again to ensure they pass
+            5. **Commit the fixes** with a clear commit message
+            
+            ## Rules:
+            - Only fix actual CI failures, don't make unrelated changes
+            - Use proper commit messages explaining what was fixed
+            - If you can't fix an issue automatically, explain why in a comment
+            - Focus on Rust-specific issues (formatting, clippy, tests, builds)
+            
+            ## Project Context:
+            This is a Rust CLI tool for Claude Code Python automation. The main validation steps are:
+            - Code formatting with `cargo fmt`
+            - Linting with `cargo clippy --all-targets --all-features -- -D warnings`
+            - All tests passing with `cargo test`
+            - Successful release build with `cargo build --release`
+
+      - name: Comment on PR with auto-fix results
+        if: always() && steps.pr-info.outputs.has_pr == 'true' && steps.pr-info.outputs.recent_auto_fix != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = ${{ steps.pr-info.outputs.pr_number }};
+            const success = '${{ steps.claude-fix.outcome }}' === 'success';
+            
+            let body = `🤖 **Auto-fix attempt for CI failures**\n\n`;
+            
+            if (success) {
+              body += `✅ Claude attempted to fix the CI failures. Please check the latest commit for changes.\n\n`;
+              body += `The following CI issues were addressed:\n`;
+              body += `${{ steps.ci-details.outputs.failure_details }}\n`;
+            } else {
+              body += `❌ Claude was unable to automatically fix the CI failures.\n\n`;
+              body += `Failed CI checks:\n`;
+              body += `${{ steps.ci-details.outputs.failure_details }}\n`;
+              body += `Manual intervention may be required. You can also mention \`@claude\` to ask for help debugging the issues.\n`;
+            }
+            
+            body += `\n---\n*This was an automatic attempt to fix CI failures. The auto-fix runs once per hour per PR to avoid spam.*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body
+            });

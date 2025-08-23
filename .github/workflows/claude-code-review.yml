@@ -3,12 +3,13 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    # Only run on Rust source code changes
+    paths:
+      - "src/**/*.rs"
+      - "tests/**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/*.yml"
 
 jobs:
   claude-review:
@@ -40,14 +41,22 @@ jobs:
           # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4.1)
           # model: "claude-opus-4-1-20250805"
 
-          # Direct prompt for automated review (no @claude mention needed)
+          # Direct prompt for automated Rust code review
           direct_prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
+            Please review this Rust pull request focusing on:
+            - Rust idioms and best practices
+            - Error handling with anyhow/Result patterns
+            - Memory safety and ownership
+            - Performance considerations (especially for CLI tools)
             - Security concerns
-            - Test coverage
+            - Test coverage and integration test updates
+            - Cargo.toml dependency management
+            - CLI interface consistency and usability
+            
+            This is a CLI tool for Claude Code Python automation, so also consider:
+            - User experience and error messages
+            - Configuration file handling
+            - File system operations safety
             
             Be constructive and helpful in your feedback.
 
@@ -68,8 +77,13 @@ jobs:
           #   'Welcome! Please review this PR from a first-time contributor. Be encouraging and provide detailed explanations for any suggestions.' ||
           #   'Please provide a thorough code review focusing on our coding standards and best practices.' }}
           
-          # Optional: Add specific tools for running tests or linting
-          # allowed_tools: "Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck)"
+          # Allow tools for Rust code analysis
+          allowed_tools: |
+            Bash(cargo fmt --check),
+            Bash(cargo clippy --all-targets --all-features -- -D warnings),
+            Bash(cargo test),
+            Bash(cargo build --release),
+            Bash(./target/release/claude-python-guardrails --help)
           
           # Optional: Skip review for certain conditions
           # if: |
