@@ -6,7 +6,16 @@ use std::time::Duration;
 use crate::discovery::PythonProject;
 use crate::locking::LockGuard;
 use crate::protocol::HookInput;
+use crate::cerebras::{CerebrasConfig, SmartExclusionAnalyzer};
 use crate::GuardrailsChecker;
+
+/// Output from running a command including exit status and captured output
+#[derive(Debug)]
+pub struct CommandOutput {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
 
 /// Configuration for automation behavior
 #[derive(Debug, Clone)]
@@ -36,6 +45,7 @@ impl Default for AutomationConfig {
 pub struct AutomationRunner {
     config: AutomationConfig,
     checker: GuardrailsChecker,
+    analyzer: SmartExclusionAnalyzer,
 }
 
 /// Result of running an automation command
@@ -54,11 +64,18 @@ pub enum AutomationResult {
 impl AutomationRunner {
     /// Create a new automation runner
     pub fn new(config: AutomationConfig, checker: GuardrailsChecker) -> Self {
-        Self { config, checker }
+        let cerebras_config = CerebrasConfig::default();
+        let analyzer = SmartExclusionAnalyzer::new(cerebras_config);
+        
+        Self { 
+            config, 
+            checker,
+            analyzer,
+        }
     }
 
     /// Handle smart-lint command from Claude Code hook
-    pub fn handle_smart_lint(&self) -> Result<AutomationResult> {
+    pub async fn handle_smart_lint(&self) -> Result<AutomationResult> {
         if !self.config.lint_enabled {
             log::debug!("Smart lint is disabled");
             return Ok(AutomationResult::NoAction);
@@ -114,11 +131,11 @@ impl AutomationRunner {
             };
 
         // Find and run linter
-        self.run_lint_command(&project)
+        self.run_lint_command(&project).await
     }
 
     /// Handle smart-test command from Claude Code hook
-    pub fn handle_smart_test(&self) -> Result<AutomationResult> {
+    pub async fn handle_smart_test(&self) -> Result<AutomationResult> {
         if !self.config.test_enabled {
             log::debug!("Smart test is disabled");
             return Ok(AutomationResult::NoAction);
@@ -173,12 +190,12 @@ impl AutomationRunner {
                 None => return Ok(AutomationResult::Skipped),
             };
 
-        // Find and run test command
-        self.run_test_command(&project)
+        // Find and run test command for the specific file
+        self.run_test_command(&project, &file_path).await
     }
 
     /// Run linting command for the project
-    fn run_lint_command(&self, project: &PythonProject) -> Result<AutomationResult> {
+    async fn run_lint_command(&self, project: &PythonProject) -> Result<AutomationResult> {
         let linter = match project.preferred_linter() {
             Some(linter) => linter,
             None => {
@@ -193,28 +210,87 @@ impl AutomationRunner {
             project.root.display()
         );
 
-        let success = self.run_command_with_timeout(
+        let output = self.run_command_with_timeout(
             linter.command(),
             &linter.args(),
             &project.root,
             self.config.lint_timeout_seconds,
         )?;
 
-        if success {
+        if output.success {
             Ok(AutomationResult::Success(
                 "👉 Lints pass. Continue with your task.".to_string(),
             ))
         } else {
-            Ok(AutomationResult::Failure(format!(
-                "⛔ BLOCKING: Run 'cd {} && {}' to fix lint failures",
-                project.root.display(),
-                linter.display_name()
-            )))
+            // Use AI analysis for comprehensive lint failure analysis
+            let combined_output = if !output.stderr.is_empty() {
+                format!("{}\n{}", output.stdout, output.stderr)
+            } else {
+                output.stdout
+            };
+
+            // Run AI analysis if available
+            let message = if !combined_output.trim().is_empty() {
+                match self.analyzer.analyze_lint_output(&combined_output, Some(&project.root)).await {
+                    Ok(analysis) => {
+                        let mut detailed_message = String::new();
+                        detailed_message.push_str("⛔ LINT ISSUES FOUND:\n\n");
+                        
+                        if analysis.has_real_issues {
+                            // Show filtered output with only real issues
+                            if !analysis.filtered_output.trim().is_empty() {
+                                detailed_message.push_str(&analysis.filtered_output);
+                                detailed_message.push_str("\n\n");
+                            }
+                            
+                            // Add AI reasoning
+                            if !analysis.reasoning.trim().is_empty() {
+                                detailed_message.push_str("💡 **Analysis:**\n");
+                                detailed_message.push_str(&analysis.reasoning);
+                                detailed_message.push_str("\n\n");
+                            }
+                            
+                            detailed_message.push_str(&format!(
+                                "📝 **Fix Command:** Run 'cd {} && {}' to address these issues",
+                                project.root.display(),
+                                linter.display_name()
+                            ));
+                        } else {
+                            detailed_message.push_str("✅ **AI Analysis Result:**\n");
+                            detailed_message.push_str(&analysis.reasoning);
+                            detailed_message.push_str("\n\n👉 No real issues found. You can continue with your task.");
+                            
+                            // Return success if no real issues found
+                            return Ok(AutomationResult::Success(detailed_message));
+                        }
+                        
+                        detailed_message
+                    }
+                    Err(e) => {
+                        log::warn!("AI analysis failed: {}", e);
+                        // Fallback to showing raw output
+                        format!(
+                            "⛔ LINT FAILURES:\n\n{}\n\nRun 'cd {} && {}' to fix these issues",
+                            combined_output.trim(),
+                            project.root.display(),
+                            linter.display_name()
+                        )
+                    }
+                }
+            } else {
+                format!(
+                    "⛔ BLOCKING: Run 'cd {} && {}' to fix lint failures",
+                    project.root.display(),
+                    linter.display_name()
+                )
+            };
+
+            Ok(AutomationResult::Failure(message))
         }
     }
 
-    /// Run test command for the project
-    fn run_test_command(&self, project: &PythonProject) -> Result<AutomationResult> {
+    /// Run test command for a specific file in the project
+    async fn run_test_command(&self, project: &PythonProject, source_file: &Path) -> Result<AutomationResult> {
         let tester = match project.preferred_tester() {
             Some(tester) => tester,
             None => {
@@ -223,46 +299,178 @@ impl AutomationRunner {
             }
         };
 
+        // Find the corresponding test file for the edited source file
+        let test_file = match self.find_test_file_for_source(source_file, &project.root) {
+            Some(test_file) => test_file,
+            None => {
+                log::debug!("No test file found for: {}", source_file.display());
+                return Ok(AutomationResult::Success(format!(
+                    "📝 No tests found for {}.\n\n💡 Consider creating tests at:\n  • tests/test_{}.py\n  • tests/unit/test_{}.py\n\n👉 Continue with your task.",
+                    source_file.file_name().unwrap_or_default().to_string_lossy(),
+                    source_file.file_stem().unwrap_or_default().to_string_lossy(),
+                    source_file.file_stem().unwrap_or_default().to_string_lossy()
+                )));
+            }
+        };
+
         log::debug!(
-            "Running {} in {}",
+            "Running {} on test file: {}",
             tester.display_name(),
-            project.root.display()
+            test_file.display()
         );
 
-        let success = self.run_command_with_timeout(
+        // Create command arguments that include the specific test file
+        let base_args = tester.args();
+        let test_file_str = test_file.to_string_lossy();
+        
+        // Build combined args by collecting base args and adding the test file
+        let mut combined_args: Vec<&str> = base_args.iter().copied().collect();
+        combined_args.push(&test_file_str);
+
+        let output = self.run_command_with_timeout(
             tester.command(),
-            &tester.args(),
+            &combined_args,
             &project.root,
             self.config.test_timeout_seconds,
         )?;
 
-        if success {
-            Ok(AutomationResult::Success(
-                "👉 Tests pass. Continue with your task.".to_string(),
-            ))
+        // Always combine stdout/stderr output for analysis
+        let combined_output = if !output.stderr.is_empty() {
+            format!("{}\n{}", output.stdout, output.stderr)
         } else {
-            Ok(AutomationResult::Failure(format!(
-                "⛔ BLOCKING: Run 'cd {} && {}' to fix test failures",
-                project.root.display(),
-                tester.display_name()
-            )))
+            output.stdout
+        };
+
+        // Always run AI analysis regardless of test success/failure
+        // We already have the source file as a parameter, no need to search for it
+        
+        match self.analyzer.analyze_test_output(&combined_output, &project.root, Some(source_file)).await {
+            Ok(analysis) => {
+                if output.success {
+                    // Tests passed - check for coverage gaps and improvements
+                    let mut message = String::new();
+                    
+                    // Check if there are important missing tests or coverage gaps
+                    let has_suggestions = !analysis.missing_tests.is_empty() 
+                        || analysis.coverage_analysis.contains("missing") 
+                        || analysis.coverage_analysis.contains("gap")
+                        || analysis.quality_assessment.contains("improve")
+                        || analysis.recommendations.contains("add")
+                        || analysis.recommendations.contains("consider");
+                    
+                    if has_suggestions {
+                        message.push_str("✅ Tests pass, but coverage gaps detected:\n\n");
+                        
+                        if !analysis.coverage_analysis.is_empty() {
+                            message.push_str(&format!("📋 **Coverage Analysis**: {}\n\n", analysis.coverage_analysis));
+                        }
+                        
+                        if !analysis.missing_tests.is_empty() {
+                            message.push_str("➕ **Recommended Additional Tests**:\n");
+                            for missing_test in &analysis.missing_tests {
+                                message.push_str(&format!("  • {}\n", missing_test));
+                            }
+                            message.push_str("\n");
+                        }
+                        
+                        if !analysis.recommendations.is_empty() {
+                            message.push_str(&format!("💡 **Suggestions**: {}\n\n", analysis.recommendations));
+                        }
+                        
+                        message.push_str("👉 Continue with your task, but consider adding these tests.");
+                    } else {
+                        message.push_str("✅ Tests pass with excellent coverage!\n\n");
+                        
+                        if !analysis.coverage_analysis.is_empty() {
+                            message.push_str(&format!("📋 **Coverage**: {}\n", analysis.coverage_analysis));
+                        }
+                        
+                        if !analysis.quality_assessment.is_empty() {
+                            message.push_str(&format!("🎯 **Quality**: {}\n\n", analysis.quality_assessment));
+                        }
+                        
+                        message.push_str("👉 Continue with your task.");
+                    }
+                    
+                    Ok(AutomationResult::Success(message))
+                } else {
+                    // Tests failed - provide comprehensive failure analysis
+                    let mut detailed_message = String::new();
+                    detailed_message.push_str("⛔ TESTS FAILED:\n\n");
+                    
+                    // Add AI analysis
+                    detailed_message.push_str(&format!("📊 **Analysis**: {}\n\n", analysis.summary));
+                    
+                    if !analysis.failed_tests.is_empty() {
+                        detailed_message.push_str("🔍 **Failed Tests**:\n");
+                        for test in &analysis.failed_tests {
+                            detailed_message.push_str(&format!(
+                                "  • {}: {} - {}\n    💡 Fix: {}\n", 
+                                test.test_name, test.error_type, test.error_message, test.suggested_fix
+                            ));
+                        }
+                        detailed_message.push_str("\n");
+                    }
+                    
+                    if !analysis.coverage_analysis.is_empty() {
+                        detailed_message.push_str(&format!("📋 **Coverage**: {}\n\n", analysis.coverage_analysis));
+                    }
+                    
+                    if !analysis.missing_tests.is_empty() {
+                        detailed_message.push_str("➕ **Consider Adding**:\n");
+                        for missing_test in &analysis.missing_tests {
+                            detailed_message.push_str(&format!("  • {}\n", missing_test));
+                        }
+                        detailed_message.push_str("\n");
+                    }
+                    
+                    detailed_message.push_str(&format!("🛠️  **Next Steps**: {}\n\n", analysis.recommendations));
+                    detailed_message.push_str("📄 **Full Output**:\n");
+                    detailed_message.push_str(&combined_output.trim());
+                    detailed_message.push_str(&format!("\n\nRun 'cd {} && {}' to retry", project.root.display(), tester.display_name()));
+                    
+                    Ok(AutomationResult::Failure(detailed_message))
+                }
+            },
+            Err(e) => {
+                log::warn!("AI analysis failed: {}", e);
+                // Fallback to basic behavior when AI analysis fails
+                if output.success {
+                    Ok(AutomationResult::Success(
+                        "👉 Tests pass. Continue with your task.".to_string(),
+                    ))
+                } else if !combined_output.trim().is_empty() {
+                    Ok(AutomationResult::Failure(format!(
+                        "⛔ TESTS FAILED:\n\n{}\n\nRun 'cd {} && {}' to fix these test failures",
+                        combined_output.trim(),
+                        project.root.display(),
+                        tester.display_name()
+                    )))
+                } else {
+                    Ok(AutomationResult::Failure(format!(
+                        "⛔ BLOCKING: Run 'cd {} && {}' to fix test failures",
+                        project.root.display(),
+                        tester.display_name()
+                    )))
+                }
+            }
         }
     }
 
-    /// Run a command with timeout, returning true if successful
+    /// Run a command with timeout, capturing output
     fn run_command_with_timeout(
         &self,
         command: &str,
         args: &[&str],
         working_dir: &Path,
         timeout_seconds: u64,
-    ) -> Result<bool> {
+    ) -> Result<CommandOutput> {
         // Create command
         let mut cmd = Command::new(command);
         cmd.args(args)
             .current_dir(working_dir)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
 
         // Spawn process
         let mut child = cmd.spawn().context("Failed to spawn command")?;
@@ -271,12 +479,24 @@ impl AutomationRunner {
         let result = self.wait_with_timeout(&mut child, Duration::from_secs(timeout_seconds))?;
 
         match result {
-            Some(status) => Ok(status.success()),
+            Some(status) => {
+                // Get output
+                let output = child.wait_with_output().context("Failed to get command output")?;
+                Ok(CommandOutput {
+                    success: status.success(),
+                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                })
+            }
             None => {
                 // Timeout - kill the process
                 let _ = child.kill();
                 let _ = child.wait();
-                Ok(false)
+                Ok(CommandOutput {
+                    success: false,
+                    stdout: String::new(),
+                    stderr: "Command timed out".to_string(),
+                })
             }
         }
     }
@@ -304,6 +524,51 @@ impl AutomationRunner {
             }
         }
     }
+
+    /// Find the corresponding test file for a given source file
+    fn find_test_file_for_source(&self, source_file: &Path, project_root: &Path) -> Option<std::path::PathBuf> {
+        let source_name = source_file.file_stem()?.to_str()?;
+        
+        // Check if the edited file is already a test file
+        if let Some(file_name) = source_file.file_name()?.to_str() {
+            if file_name.starts_with("test_") || file_name.contains("_test.py") || file_name.contains("test.py") {
+                // If it's already a test file, return it as the test to run
+                return Some(source_file.to_path_buf());
+            }
+        }
+        
+        // List of possible test file patterns and locations
+        let test_patterns = vec![
+            format!("test_{}.py", source_name),
+            format!("{}_test.py", source_name),
+            format!("test{}.py", source_name),
+        ];
+        
+        let test_directories = vec![
+            project_root.join("tests"),
+            project_root.join("test"),
+            project_root.join("tests").join("unit"),
+            project_root.join("tests").join("integration"),
+            project_root.join("test").join("unit"),
+            project_root.to_path_buf(), // Same directory as source
+            source_file.parent()?.to_path_buf(), // Source file's directory
+        ];
+        
+        // Search for test file in various locations
+        for test_dir in &test_directories {
+            for pattern in &test_patterns {
+                let test_file_path = test_dir.join(pattern);
+                if test_file_path.exists() && test_file_path.is_file() {
+                    log::debug!("Found test file: {}", test_file_path.display());
+                    return Some(test_file_path);
+                }
+            }
+        }
+        
+        log::debug!("No test file found for source file: {}", source_file.display());
+        None
+    }
+
 }
 
 impl AutomationResult {
@@ -380,12 +645,12 @@ mod tests {
         let temp_dir = TempDir::new()?;
 
         // Test successful quick command
-        let success = runner.run_command_with_timeout("echo", &["hello"], temp_dir.path(), 5)?;
-        assert!(success);
+        let output = runner.run_command_with_timeout("echo", &["hello"], temp_dir.path(), 5)?;
+        assert!(output.success);
 
         // Test command that should timeout (sleep for longer than timeout)
-        let success = runner.run_command_with_timeout("sleep", &["10"], temp_dir.path(), 1)?;
-        assert!(!success);
+        let output = runner.run_command_with_timeout("sleep", &["10"], temp_dir.path(), 1)?;
+        assert!(!output.success);
 
         Ok(())
     }
