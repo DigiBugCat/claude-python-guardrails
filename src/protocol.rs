@@ -109,10 +109,7 @@ mod tests {
         let input: HookInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.hook_event_name, "PostToolUse");
         assert_eq!(input.tool_name, "Edit");
-        assert_eq!(
-            input.file_path(),
-            Some(PathBuf::from("/path/to/file.py"))
-        );
+        assert_eq!(input.file_path(), Some(PathBuf::from("/path/to/file.py")));
         assert!(input.should_process());
         assert!(input.is_edit_tool());
     }

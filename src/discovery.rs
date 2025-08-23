@@ -40,8 +40,8 @@ impl PythonProject {
     /// Discover Python project information starting from the given directory
     pub fn discover<P: AsRef<Path>>(start_dir: P) -> Result<Self> {
         let start_path = start_dir.as_ref();
-        let project_root = Self::find_project_root(start_path)
-            .context("Failed to find Python project root")?;
+        let project_root =
+            Self::find_project_root(start_path).context("Failed to find Python project root")?;
 
         let project_type = Self::detect_project_type(&project_root);
         let available_linters = Self::detect_available_linters();
@@ -295,7 +295,11 @@ mod tests {
         fs::remove_file(temp_dir.path().join("pyproject.toml")).unwrap();
 
         // Test classical project (setup.py)
-        fs::write(temp_dir.path().join("setup.py"), "from setuptools import setup").unwrap();
+        fs::write(
+            temp_dir.path().join("setup.py"),
+            "from setuptools import setup",
+        )
+        .unwrap();
         assert_eq!(
             PythonProject::detect_project_type(temp_dir.path()),
             ProjectType::Classical
@@ -344,7 +348,11 @@ mod tests {
         fs::remove_file(temp_dir.path().join("pyproject.toml")).unwrap();
 
         // Adding setup.py should make it a project root
-        fs::write(temp_dir.path().join("setup.py"), "from setuptools import setup").unwrap();
+        fs::write(
+            temp_dir.path().join("setup.py"),
+            "from setuptools import setup",
+        )
+        .unwrap();
         assert!(PythonProject::is_python_project_root(temp_dir.path()));
     }
 
@@ -370,7 +378,10 @@ mod tests {
         assert_eq!(PythonTester::PytestModule.args(), vec!["-m", "pytest"]);
 
         assert_eq!(PythonTester::Unittest.command(), "python");
-        assert_eq!(PythonTester::Unittest.args(), vec!["-m", "unittest", "discover"]);
+        assert_eq!(
+            PythonTester::Unittest.args(),
+            vec!["-m", "unittest", "discover"]
+        );
     }
 
     #[test]

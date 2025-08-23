@@ -11,7 +11,7 @@ pub mod protocol;
 
 // Re-export commonly used types for convenience
 pub use automation::{AutomationConfig, AutomationResult, AutomationRunner};
-pub use discovery::{PythonLinter, PythonProject, PythonTester, ProjectType};
+pub use discovery::{ProjectType, PythonLinter, PythonProject, PythonTester};
 pub use locking::{LockGuard, ProcessLock};
 pub use protocol::{HookInput, HookResponse};
 

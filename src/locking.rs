@@ -33,8 +33,8 @@ impl ProcessLock {
             return Ok(false);
         }
 
-        let lock_content = fs::read_to_string(&self.lock_file)
-            .context("Failed to read lock file")?;
+        let lock_content =
+            fs::read_to_string(&self.lock_file).context("Failed to read lock file")?;
 
         let lines: Vec<&str> = lock_content.lines().collect();
 
@@ -79,8 +79,7 @@ impl ProcessLock {
     /// Acquire the lock by writing our PID to the lock file
     pub fn acquire(&self) -> Result<()> {
         let pid = process::id();
-        fs::write(&self.lock_file, pid.to_string())
-            .context("Failed to write PID to lock file")?;
+        fs::write(&self.lock_file, pid.to_string()).context("Failed to write PID to lock file")?;
 
         log::debug!("Acquired lock for {} (PID: {})", self.operation, pid);
         Ok(())
@@ -130,10 +129,7 @@ impl ProcessLock {
             Command::new("tasklist")
                 .args(&["/FI", &format!("PID eq {}", pid)])
                 .output()
-                .map(|output| {
-                    String::from_utf8_lossy(&output.stdout)
-                        .contains(&pid.to_string())
-                })
+                .map(|output| String::from_utf8_lossy(&output.stdout).contains(&pid.to_string()))
                 .unwrap_or(false)
         }
     }
@@ -182,7 +178,10 @@ mod tests {
         let temp_dir = TempDir::new()?;
         let lock = ProcessLock::new(temp_dir.path(), "test", 5)?;
 
-        assert!(lock.lock_file.to_string_lossy().contains("claude-python-guardrails-test-"));
+        assert!(lock
+            .lock_file
+            .to_string_lossy()
+            .contains("claude-python-guardrails-test-"));
         assert!(lock.lock_file.to_string_lossy().contains(".lock"));
         Ok(())
     }

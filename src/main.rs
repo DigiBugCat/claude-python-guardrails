@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use claude_python_guardrails::{default_config, AutomationConfig, AutomationRunner, GuardrailsChecker};
+use claude_python_guardrails::{
+    default_config, AutomationConfig, AutomationRunner, GuardrailsChecker,
+};
 use std::path::PathBuf;
 
 /// Simple exclusion checker for Python projects using Claude Code
@@ -203,7 +205,10 @@ fn load_checker(cli: &Cli) -> Result<GuardrailsChecker> {
     }
 }
 
-fn handle_smart_automation(cli: &Cli, operation: &str) -> Result<claude_python_guardrails::AutomationResult> {
+fn handle_smart_automation(
+    cli: &Cli,
+    operation: &str,
+) -> Result<claude_python_guardrails::AutomationResult> {
     use claude_python_guardrails::AutomationResult;
 
     let checker = load_checker(cli)?;

@@ -106,14 +106,12 @@ impl AutomationRunner {
         let project = PythonProject::discover(&file_dir)?;
 
         // Try to acquire lock
-        let _guard = match LockGuard::try_acquire(
-            &project.root,
-            "lint",
-            self.config.lint_cooldown_seconds,
-        )? {
-            Some(guard) => guard,
-            None => return Ok(AutomationResult::Skipped),
-        };
+        let _guard =
+            match LockGuard::try_acquire(&project.root, "lint", self.config.lint_cooldown_seconds)?
+            {
+                Some(guard) => guard,
+                None => return Ok(AutomationResult::Skipped),
+            };
 
         // Find and run linter
         self.run_lint_command(&project)
@@ -168,14 +166,12 @@ impl AutomationRunner {
         let project = PythonProject::discover(&file_dir)?;
 
         // Try to acquire lock
-        let _guard = match LockGuard::try_acquire(
-            &project.root,
-            "test",
-            self.config.test_cooldown_seconds,
-        )? {
-            Some(guard) => guard,
-            None => return Ok(AutomationResult::Skipped),
-        };
+        let _guard =
+            match LockGuard::try_acquire(&project.root, "test", self.config.test_cooldown_seconds)?
+            {
+                Some(guard) => guard,
+                None => return Ok(AutomationResult::Skipped),
+            };
 
         // Find and run test command
         self.run_test_command(&project)
@@ -191,7 +187,11 @@ impl AutomationRunner {
             }
         };
 
-        log::debug!("Running {} in {}", linter.display_name(), project.root.display());
+        log::debug!(
+            "Running {} in {}",
+            linter.display_name(),
+            project.root.display()
+        );
 
         let success = self.run_command_with_timeout(
             linter.command(),
@@ -223,7 +223,11 @@ impl AutomationRunner {
             }
         };
 
-        log::debug!("Running {} in {}", tester.display_name(), project.root.display());
+        log::debug!(
+            "Running {} in {}",
+            tester.display_name(),
+            project.root.display()
+        );
 
         let success = self.run_command_with_timeout(
             tester.command(),
@@ -353,14 +357,8 @@ mod tests {
     fn test_automation_result_exit_codes() {
         assert_eq!(AutomationResult::NoAction.exit_code(), 0);
         assert_eq!(AutomationResult::Skipped.exit_code(), 0);
-        assert_eq!(
-            AutomationResult::Success("test".to_string()).exit_code(),
-            2
-        );
-        assert_eq!(
-            AutomationResult::Failure("test".to_string()).exit_code(),
-            2
-        );
+        assert_eq!(AutomationResult::Success("test".to_string()).exit_code(), 2);
+        assert_eq!(AutomationResult::Failure("test".to_string()).exit_code(), 2);
     }
 
     #[test]
