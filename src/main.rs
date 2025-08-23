@@ -5,10 +5,10 @@ use claude_python_guardrails::{
 };
 use std::path::PathBuf;
 
-/// Simple exclusion checker for Python projects using Claude Code
+/// Smart Python automation hooks for Claude Code with intelligent linting and testing
 #[derive(Parser)]
 #[command(name = "claude-python-guardrails")]
-#[command(about = "Simple exclusion checker for Python projects using Claude Code")]
+#[command(about = "Smart Python automation hooks for Claude Code with intelligent linting and testing")]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
