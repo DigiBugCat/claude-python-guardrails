@@ -233,4 +233,3 @@ fn display_text_format(file: &Path, analysis: &ExclusionAnalysis, verbose: bool)
         println!("  • File exists and is readable");
     }
 }
-

@@ -3,10 +3,10 @@ use std::path::Path;
 use std::process::{Command, ExitStatus};
 use std::time::Duration;
 
+use crate::cerebras::{CerebrasConfig, SmartExclusionAnalyzer};
 use crate::discovery::PythonProject;
 use crate::locking::LockGuard;
 use crate::protocol::HookInput;
-use crate::cerebras::{CerebrasConfig, SmartExclusionAnalyzer};
 use crate::GuardrailsChecker;
 
 /// Output from running a command including exit status and captured output
@@ -66,9 +66,9 @@ impl AutomationRunner {
     pub fn new(config: AutomationConfig, checker: GuardrailsChecker) -> Self {
         let cerebras_config = CerebrasConfig::default();
         let analyzer = SmartExclusionAnalyzer::new(cerebras_config);
-        
-        Self { 
-            config, 
+
+        Self {
+            config,
             checker,
             analyzer,
         }
@@ -231,25 +231,29 @@ impl AutomationRunner {
 
             // Run AI analysis if available
             let message = if !combined_output.trim().is_empty() {
-                match self.analyzer.analyze_lint_output(&combined_output, Some(&project.root)).await {
+                match self
+                    .analyzer
+                    .analyze_lint_output(&combined_output, Some(&project.root))
+                    .await
+                {
                     Ok(analysis) => {
                         let mut detailed_message = String::new();
                         detailed_message.push_str("⛔ LINT ISSUES FOUND:\n\n");
-                        
+
                         if analysis.has_real_issues {
                             // Show filtered output with only real issues
                             if !analysis.filtered_output.trim().is_empty() {
                                 detailed_message.push_str(&analysis.filtered_output);
                                 detailed_message.push_str("\n\n");
                             }
-                            
+
                             // Add AI reasoning
                             if !analysis.reasoning.trim().is_empty() {
                                 detailed_message.push_str("💡 **Analysis:**\n");
                                 detailed_message.push_str(&analysis.reasoning);
                                 detailed_message.push_str("\n\n");
                             }
-                            
+
                             detailed_message.push_str(&format!(
                                 "📝 **Fix Command:** Run 'cd {} && {}' to address these issues",
                                 project.root.display(),
@@ -258,12 +262,14 @@ impl AutomationRunner {
                         } else {
                             detailed_message.push_str("✅ **AI Analysis Result:**\n");
                             detailed_message.push_str(&analysis.reasoning);
-                            detailed_message.push_str("\n\n👉 No real issues found. You can continue with your task.");
-                            
+                            detailed_message.push_str(
+                                "\n\n👉 No real issues found. You can continue with your task.",
+                            );
+
                             // Return success if no real issues found
                             return Ok(AutomationResult::Success(detailed_message));
                         }
-                        
+
                         detailed_message
                     }
                     Err(e) => {
@@ -290,7 +296,11 @@ impl AutomationRunner {
     }
 
     /// Run test command for a specific file in the project
-    async fn run_test_command(&self, project: &PythonProject, source_file: &Path) -> Result<AutomationResult> {
+    async fn run_test_command(
+        &self,
+        project: &PythonProject,
+        source_file: &Path,
+    ) -> Result<AutomationResult> {
         let tester = match project.preferred_tester() {
             Some(tester) => tester,
             None => {
@@ -322,7 +332,7 @@ impl AutomationRunner {
         // Create command arguments that include the specific test file
         let base_args = tester.args();
         let test_file_str = test_file.to_string_lossy();
-        
+
         // Build combined args by collecting base args and adding the test file
         let mut combined_args: Vec<&str> = base_args.iter().copied().collect();
         combined_args.push(&test_file_str);
@@ -343,28 +353,35 @@ impl AutomationRunner {
 
         // Always run AI analysis regardless of test success/failure
         // We already have the source file as a parameter, no need to search for it
-        
-        match self.analyzer.analyze_test_output(&combined_output, &project.root, Some(source_file)).await {
+
+        match self
+            .analyzer
+            .analyze_test_output(&combined_output, &project.root, Some(source_file))
+            .await
+        {
             Ok(analysis) => {
                 if output.success {
                     // Tests passed - check for coverage gaps and improvements
                     let mut message = String::new();
-                    
+
                     // Check if there are important missing tests or coverage gaps
-                    let has_suggestions = !analysis.missing_tests.is_empty() 
-                        || analysis.coverage_analysis.contains("missing") 
+                    let has_suggestions = !analysis.missing_tests.is_empty()
+                        || analysis.coverage_analysis.contains("missing")
                         || analysis.coverage_analysis.contains("gap")
                         || analysis.quality_assessment.contains("improve")
                         || analysis.recommendations.contains("add")
                         || analysis.recommendations.contains("consider");
-                    
+
                     if has_suggestions {
                         message.push_str("✅ Tests pass, but coverage gaps detected:\n\n");
-                        
+
                         if !analysis.coverage_analysis.is_empty() {
-                            message.push_str(&format!("📋 **Coverage Analysis**: {}\n\n", analysis.coverage_analysis));
+                            message.push_str(&format!(
+                                "📋 **Coverage Analysis**: {}\n\n",
+                                analysis.coverage_analysis
+                            ));
                         }
-                        
+
                         if !analysis.missing_tests.is_empty() {
                             message.push_str("➕ **Recommended Additional Tests**:\n");
                             for missing_test in &analysis.missing_tests {
@@ -372,50 +389,68 @@ impl AutomationRunner {
                             }
                             message.push_str("\n");
                         }
-                        
+
                         if !analysis.recommendations.is_empty() {
-                            message.push_str(&format!("💡 **Suggestions**: {}\n\n", analysis.recommendations));
+                            message.push_str(&format!(
+                                "💡 **Suggestions**: {}\n\n",
+                                analysis.recommendations
+                            ));
                         }
-                        
-                        message.push_str("👉 Continue with your task, but consider adding these tests.");
+
+                        message.push_str(
+                            "👉 Continue with your task, but consider adding these tests.",
+                        );
                     } else {
                         message.push_str("✅ Tests pass with excellent coverage!\n\n");
-                        
+
                         if !analysis.coverage_analysis.is_empty() {
-                            message.push_str(&format!("📋 **Coverage**: {}\n", analysis.coverage_analysis));
+                            message.push_str(&format!(
+                                "📋 **Coverage**: {}\n",
+                                analysis.coverage_analysis
+                            ));
                         }
-                        
+
                         if !analysis.quality_assessment.is_empty() {
-                            message.push_str(&format!("🎯 **Quality**: {}\n\n", analysis.quality_assessment));
+                            message.push_str(&format!(
+                                "🎯 **Quality**: {}\n\n",
+                                analysis.quality_assessment
+                            ));
                         }
-                        
+
                         message.push_str("👉 Continue with your task.");
                     }
-                    
+
                     Ok(AutomationResult::Success(message))
                 } else {
                     // Tests failed - provide comprehensive failure analysis
                     let mut detailed_message = String::new();
                     detailed_message.push_str("⛔ TESTS FAILED:\n\n");
-                    
+
                     // Add AI analysis
-                    detailed_message.push_str(&format!("📊 **Analysis**: {}\n\n", analysis.summary));
-                    
+                    detailed_message
+                        .push_str(&format!("📊 **Analysis**: {}\n\n", analysis.summary));
+
                     if !analysis.failed_tests.is_empty() {
                         detailed_message.push_str("🔍 **Failed Tests**:\n");
                         for test in &analysis.failed_tests {
                             detailed_message.push_str(&format!(
-                                "  • {}: {} - {}\n    💡 Fix: {}\n", 
-                                test.test_name, test.error_type, test.error_message, test.suggested_fix
+                                "  • {}: {} - {}\n    💡 Fix: {}\n",
+                                test.test_name,
+                                test.error_type,
+                                test.error_message,
+                                test.suggested_fix
                             ));
                         }
                         detailed_message.push_str("\n");
                     }
-                    
+
                     if !analysis.coverage_analysis.is_empty() {
-                        detailed_message.push_str(&format!("📋 **Coverage**: {}\n\n", analysis.coverage_analysis));
+                        detailed_message.push_str(&format!(
+                            "📋 **Coverage**: {}\n\n",
+                            analysis.coverage_analysis
+                        ));
                     }
-                    
+
                     if !analysis.missing_tests.is_empty() {
                         detailed_message.push_str("➕ **Consider Adding**:\n");
                         for missing_test in &analysis.missing_tests {
@@ -423,15 +458,22 @@ impl AutomationRunner {
                         }
                         detailed_message.push_str("\n");
                     }
-                    
-                    detailed_message.push_str(&format!("🛠️  **Next Steps**: {}\n\n", analysis.recommendations));
+
+                    detailed_message.push_str(&format!(
+                        "🛠️  **Next Steps**: {}\n\n",
+                        analysis.recommendations
+                    ));
                     detailed_message.push_str("📄 **Full Output**:\n");
                     detailed_message.push_str(&combined_output.trim());
-                    detailed_message.push_str(&format!("\n\nRun 'cd {} && {}' to retry", project.root.display(), tester.display_name()));
-                    
+                    detailed_message.push_str(&format!(
+                        "\n\nRun 'cd {} && {}' to retry",
+                        project.root.display(),
+                        tester.display_name()
+                    ));
+
                     Ok(AutomationResult::Failure(detailed_message))
                 }
-            },
+            }
             Err(e) => {
                 log::warn!("AI analysis failed: {}", e);
                 // Fallback to basic behavior when AI analysis fails
@@ -481,7 +523,9 @@ impl AutomationRunner {
         match result {
             Some(status) => {
                 // Get output
-                let output = child.wait_with_output().context("Failed to get command output")?;
+                let output = child
+                    .wait_with_output()
+                    .context("Failed to get command output")?;
                 Ok(CommandOutput {
                     success: status.success(),
                     stdout: String::from_utf8_lossy(&output.stdout).to_string(),
@@ -526,24 +570,31 @@ impl AutomationRunner {
     }
 
     /// Find the corresponding test file for a given source file
-    fn find_test_file_for_source(&self, source_file: &Path, project_root: &Path) -> Option<std::path::PathBuf> {
+    fn find_test_file_for_source(
+        &self,
+        source_file: &Path,
+        project_root: &Path,
+    ) -> Option<std::path::PathBuf> {
         let source_name = source_file.file_stem()?.to_str()?;
-        
+
         // Check if the edited file is already a test file
         if let Some(file_name) = source_file.file_name()?.to_str() {
-            if file_name.starts_with("test_") || file_name.contains("_test.py") || file_name.contains("test.py") {
+            if file_name.starts_with("test_")
+                || file_name.contains("_test.py")
+                || file_name.contains("test.py")
+            {
                 // If it's already a test file, return it as the test to run
                 return Some(source_file.to_path_buf());
             }
         }
-        
+
         // List of possible test file patterns and locations
         let test_patterns = vec![
             format!("test_{}.py", source_name),
             format!("{}_test.py", source_name),
             format!("test{}.py", source_name),
         ];
-        
+
         let test_directories = vec![
             project_root.join("tests"),
             project_root.join("test"),
@@ -553,7 +604,7 @@ impl AutomationRunner {
             project_root.to_path_buf(), // Same directory as source
             source_file.parent()?.to_path_buf(), // Source file's directory
         ];
-        
+
         // Search for test file in various locations
         for test_dir in &test_directories {
             for pattern in &test_patterns {
@@ -564,11 +615,13 @@ impl AutomationRunner {
                 }
             }
         }
-        
-        log::debug!("No test file found for source file: {}", source_file.display());
+
+        log::debug!(
+            "No test file found for source file: {}",
+            source_file.display()
+        );
         None
     }
-
 }
 
 impl AutomationResult {

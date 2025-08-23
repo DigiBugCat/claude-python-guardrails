@@ -657,13 +657,21 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
     }
 
     /// Analyze test output comprehensively using Cerebras AI
-    pub async fn analyze_test_output(&self, output: &str, project_path: &Path, source_file: Option<&Path>) -> Result<TestFailureAnalysis> {
+    pub async fn analyze_test_output(
+        &self,
+        output: &str,
+        project_path: &Path,
+        source_file: Option<&Path>,
+    ) -> Result<TestFailureAnalysis> {
         if !self.config.enabled {
             return Ok(self.basic_test_failure_analysis(output));
         }
 
         // Handle API errors gracefully with basic analysis
-        match self.call_cerebras_comprehensive_test_analysis(output, project_path, source_file).await {
+        match self
+            .call_cerebras_comprehensive_test_analysis(output, project_path, source_file)
+            .await
+        {
             Ok(analysis) => Ok(analysis),
             Err(e) => {
                 eprintln!("Warning: Cerebras test analysis failed: {}", e);
@@ -673,12 +681,16 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
     }
 
     /// Analyze lint output using Cerebras AI
-    pub async fn analyze_lint_output(&self, output: &str, file_path: Option<&Path>) -> Result<LintAnalysis> {
+    pub async fn analyze_lint_output(
+        &self,
+        output: &str,
+        file_path: Option<&Path>,
+    ) -> Result<LintAnalysis> {
         if !self.config.enabled {
             return Ok(self.basic_lint_analysis(output));
         }
 
-        // Handle API errors gracefully with basic analysis  
+        // Handle API errors gracefully with basic analysis
         match self.call_cerebras_lint_analysis(output, file_path).await {
             Ok(analysis) => Ok(analysis),
             Err(e) => {
@@ -689,7 +701,12 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
     }
 
     /// Make comprehensive API call to Cerebras for test analysis
-    async fn call_cerebras_comprehensive_test_analysis(&self, output: &str, project_path: &Path, source_file: Option<&Path>) -> Result<TestFailureAnalysis> {
+    async fn call_cerebras_comprehensive_test_analysis(
+        &self,
+        output: &str,
+        project_path: &Path,
+        source_file: Option<&Path>,
+    ) -> Result<TestFailureAnalysis> {
         let prompt = self.create_comprehensive_test_prompt(output, project_path, source_file);
 
         let request = ChatRequest {
@@ -713,7 +730,7 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
                                 "description": "Whether there are actual test failures"
                             },
                             "summary": {
-                                "type": "string", 
+                                "type": "string",
                                 "description": "Brief summary of test execution results"
                             },
                             "failed_tests": {
@@ -734,7 +751,7 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
                                 "description": "Detailed analysis of test execution and failures"
                             },
                             "recommendations": {
-                                "type": "string", 
+                                "type": "string",
                                 "description": "Specific actionable recommendations for immediate fixes"
                             },
                             "coverage_analysis": {
@@ -782,14 +799,18 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
             .and_then(|choice| choice.message.content.as_ref())
             .context("No content in API response")?;
 
-        let analysis: TestFailureAnalysis = serde_json::from_str(content)
-            .context("Failed to parse analysis JSON")?;
+        let analysis: TestFailureAnalysis =
+            serde_json::from_str(content).context("Failed to parse analysis JSON")?;
 
         Ok(analysis)
     }
 
     /// Make API call to Cerebras for lint output analysis
-    async fn call_cerebras_lint_analysis(&self, output: &str, file_path: Option<&Path>) -> Result<LintAnalysis> {
+    async fn call_cerebras_lint_analysis(
+        &self,
+        output: &str,
+        file_path: Option<&Path>,
+    ) -> Result<LintAnalysis> {
         let prompt = self.create_lint_output_prompt(output, file_path);
 
         let request = ChatRequest {
@@ -860,14 +881,19 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
             .and_then(|choice| choice.message.content.as_ref())
             .context("No content in API response")?;
 
-        let analysis: LintAnalysis = serde_json::from_str(content)
-            .context("Failed to parse analysis JSON")?;
+        let analysis: LintAnalysis =
+            serde_json::from_str(content).context("Failed to parse analysis JSON")?;
 
         Ok(analysis)
     }
 
     /// Create comprehensive prompt for test analysis including source code and coverage analysis
-    fn create_comprehensive_test_prompt(&self, output: &str, project_path: &Path, source_file: Option<&Path>) -> String {
+    fn create_comprehensive_test_prompt(
+        &self,
+        output: &str,
+        project_path: &Path,
+        source_file: Option<&Path>,
+    ) -> String {
         let mut source_content = String::new();
         let mut test_content = String::new();
         let mut file_context = String::new();
@@ -875,16 +901,20 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
         // Read source file if provided
         if let Some(source_path) = source_file {
             file_context = format!("Source file: {}", source_path.display());
-            
+
             if let Ok(content) = self.read_file_content(source_path) {
-                source_content = format!("\n\nSource code being tested:\n```python\n{}\n```", content);
+                source_content =
+                    format!("\n\nSource code being tested:\n```python\n{}\n```", content);
             }
 
             // Try to find corresponding test file
-            let source_name = source_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
+            let source_name = source_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
             let possible_test_paths = vec![
                 format!("test_{}.py", source_name),
-                format!("tests/test_{}.py", source_name), 
+                format!("tests/test_{}.py", source_name),
                 format!("tests/unit/test_{}.py", source_name),
                 format!("test/test_{}.py", source_name),
             ];
@@ -893,8 +923,11 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
                 let test_path = project_path.join(test_path_str);
                 if test_path.exists() {
                     if let Ok(content) = self.read_file_content(&test_path) {
-                        test_content = format!("\n\nExisting test file ({}): \n```python\n{}\n```", 
-                                             test_path.display(), content);
+                        test_content = format!(
+                            "\n\nExisting test file ({}): \n```python\n{}\n```",
+                            test_path.display(),
+                            content
+                        );
                         break;
                     }
                 }
@@ -993,16 +1026,16 @@ Provide:
 4. **Recommendations**: Specific suggestions for fixing the real issues
 
 If all issues are false positives, return empty filtered_output and explain why in the reasoning."#,
-            file_context,
-            output
+            file_context, output
         )
     }
 
     /// Basic test failure analysis when AI is not available
     fn basic_test_failure_analysis(&self, output: &str) -> TestFailureAnalysis {
-        let has_failures = output.contains("FAILED") || output.contains("ERROR") || output.contains("FAIL");
+        let has_failures =
+            output.contains("FAILED") || output.contains("ERROR") || output.contains("FAIL");
         let line_count = output.lines().count();
-        
+
         TestFailureAnalysis {
             has_failures,
             summary: if has_failures {
@@ -1017,7 +1050,8 @@ If all issues are false positives, return empty filtered_output and explain why 
             } else {
                 "Tests appear to have passed. Consider reviewing test coverage.".to_string()
             },
-            coverage_analysis: "AI analysis not available. Consider manually reviewing test coverage.".to_string(),
+            coverage_analysis:
+                "AI analysis not available. Consider manually reviewing test coverage.".to_string(),
             missing_tests: vec![], // Can't determine without AI analysis
             quality_assessment: "Unable to assess test quality without AI analysis.".to_string(),
         }

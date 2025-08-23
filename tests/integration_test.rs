@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::fs;
-use std::process::{Command, Stdio};
 use std::io::Write;
+use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 /// Helper to run the CLI binary with JSON input via stdin and return output + exit code
@@ -83,7 +83,7 @@ fn test_help_command() -> Result<()> {
     assert!(stdout.contains("lint"));
     assert!(stdout.contains("test"));
     assert!(stdout.contains("analyze"));
-    
+
     // Should NOT contain removed commands
     assert!(!stdout.contains("check"));
     assert!(!stdout.contains("init"));
@@ -113,7 +113,7 @@ fn test_lint_with_hook_input() -> Result<()> {
 
     // lint should complete (exit code 0 or 2, never 1)
     assert!(exit_code == 0 || exit_code == 2);
-    
+
     // Should handle the hook input without errors about missing stdin
     assert!(!stderr.contains("No JSON input available"));
 
@@ -135,7 +135,7 @@ fn test_test_with_hook_input() -> Result<()> {
     // 1 = system error (e.g., tool discovery failed)
     // 2 = test result message (pass or fail)
     assert!(exit_code == 0 || exit_code == 1 || exit_code == 2);
-    
+
     // Should handle the hook input without errors about missing stdin
     assert!(!stderr.contains("No JSON input available"));
 
@@ -165,14 +165,15 @@ fn test_analyze_with_hook_input_json_format() -> Result<()> {
     fs::write(&py_file, "import os\nprint('test')")?;
 
     let hook_json = create_hook_json(py_file.to_str().unwrap());
-    let (stdout, _stderr, exit_code) = run_cli_with_stdin(&["analyze", "--format", "json"], &hook_json)?;
+    let (stdout, _stderr, exit_code) =
+        run_cli_with_stdin(&["analyze", "--format", "json"], &hook_json)?;
 
     assert_eq!(exit_code, 0);
-    
+
     // Should be valid JSON
-    let analysis: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("Output should be valid JSON");
-    
+    let analysis: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
     // Should have required fields
     assert!(analysis.get("should_exclude_general").is_some());
     assert!(analysis.get("should_exclude_lint").is_some());
@@ -238,10 +239,10 @@ fn test_hooks_ignore_non_edit_tools() -> Result<()> {
 #[test]
 fn test_hooks_handle_missing_file() -> Result<()> {
     let hook_json = create_hook_json("/nonexistent/file.py");
-    
+
     let (_stdout, _stderr, exit_code) = run_cli_with_stdin(&["lint"], &hook_json)?;
     assert_eq!(exit_code, 0); // Should exit quietly for nonexistent files
-    
+
     let (_stdout, _stderr, exit_code) = run_cli_with_stdin(&["test"], &hook_json)?;
     assert_eq!(exit_code, 0); // Should exit quietly for nonexistent files
 
@@ -274,7 +275,7 @@ fn test_verbose_mode_with_hooks() -> Result<()> {
     fs::write(&py_file, "print('test')")?;
 
     let hook_json = create_hook_json(py_file.to_str().unwrap());
-    
+
     // Test verbose analyze
     let (_stdout, stderr, exit_code) = run_cli_with_stdin(&["-v", "analyze"], &hook_json)?;
     assert_eq!(exit_code, 0);
