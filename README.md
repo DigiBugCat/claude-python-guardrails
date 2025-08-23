@@ -8,7 +8,7 @@ Simple exclusion checker for Python projects using Claude Code. Provides intelli
 
 ```bash
 # Clone and build
-git clone https://github.com/yourusername/claude-python-guardrails
+git clone https://github.com/DigiBugCat/claude-python-guardrails
 cd claude-python-guardrails
 cargo build --release
 
@@ -273,6 +273,10 @@ claude-python-guardrails -c /path/to/custom.yaml check file.py
 - **Fast**: Compiled Rust binary with minimal dependencies
 - **Efficient**: Glob pattern matching with `globset` crate
 - **Smart**: Context-aware exclusions (lint vs test vs general)
+
+## 🙏 Acknowledgments
+
+This project was inspired by the Claude Code hook patterns from [Veraticus/nix-config](https://github.com/Veraticus/nix-config/tree/main/home-manager/claude-code/hooks). Their approach to intelligent file filtering in Claude Code workflows provided the foundation for this standalone tool.
 
 ## 🤝 Contributing
 

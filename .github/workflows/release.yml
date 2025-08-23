@@ -41,45 +41,42 @@ jobs:
     - name: Create Release
       id: create-release
       if: steps.check-release.outputs.exists == 'false'
-      uses: actions/create-release@v1
+      run: |
+        VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+        gh release create "v$VERSION" --title "Release v$VERSION" --notes "# Claude Python Guardrails v$VERSION
+
+        ## Installation
+
+        Download the appropriate binary for your platform:
+
+        ### macOS
+        \`\`\`bash
+        # Intel Macs
+        curl -L -o claude-python-guardrails https://github.com/${{ github.repository }}/releases/download/v$VERSION/claude-python-guardrails-x86_64-apple-darwin
+        chmod +x claude-python-guardrails
+
+        # Apple Silicon Macs  
+        curl -L -o claude-python-guardrails https://github.com/${{ github.repository }}/releases/download/v$VERSION/claude-python-guardrails-aarch64-apple-darwin
+        chmod +x claude-python-guardrails
+        \`\`\`
+
+        ### Linux
+        \`\`\`bash
+        curl -L -o claude-python-guardrails https://github.com/${{ github.repository }}/releases/download/v$VERSION/claude-python-guardrails-x86_64-unknown-linux-gnu
+        chmod +x claude-python-guardrails
+        \`\`\`
+
+        ## Usage
+        \`\`\`bash
+        ./claude-python-guardrails --help
+        \`\`\`
+
+        ## Changes
+        See commit history for details."
+        echo "upload_url=$(gh api repos/${{ github.repository }}/releases/tags/v$VERSION | jq -r .upload_url)" >> $GITHUB_OUTPUT
+        echo "id=$(gh api repos/${{ github.repository }}/releases/tags/v$VERSION | jq -r .id)" >> $GITHUB_OUTPUT
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.get-version.outputs.version }}
-        release_name: Release ${{ steps.get-version.outputs.version }}
-        body: |
-          # Claude Python Guardrails ${{ steps.get-version.outputs.version }}
-          
-          ## Installation
-          
-          Download the appropriate binary for your platform:
-          
-          ### macOS
-          ```bash
-          # Intel Macs
-          curl -L -o claude-python-guardrails https://github.com/${{ github.repository }}/releases/download/${{ steps.get-version.outputs.version }}/claude-python-guardrails-x86_64-apple-darwin
-          chmod +x claude-python-guardrails
-          
-          # Apple Silicon Macs
-          curl -L -o claude-python-guardrails https://github.com/${{ github.repository }}/releases/download/${{ steps.get-version.outputs.version }}/claude-python-guardrails-aarch64-apple-darwin
-          chmod +x claude-python-guardrails
-          ```
-          
-          ### Linux
-          ```bash
-          curl -L -o claude-python-guardrails https://github.com/${{ github.repository }}/releases/download/${{ steps.get-version.outputs.version }}/claude-python-guardrails-x86_64-unknown-linux-gnu
-          chmod +x claude-python-guardrails
-          ```
-          
-          ## Usage
-          ```bash
-          ./claude-python-guardrails --help
-          ```
-          
-          ## Changes
-          See commit history for details.
-        draft: false
-        prerelease: false
 
   build:
     name: Build ${{ matrix.target }}
@@ -142,25 +139,12 @@ jobs:
       run: |
         sha256sum ${{ steps.binary-name.outputs.name }} > ${{ steps.binary-name.outputs.name }}.sha256
 
-    - name: Upload binary to release
-      uses: actions/upload-release-asset@v1
+    - name: Upload binary and checksum to release
+      run: |
+        VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+        gh release upload "v$VERSION" ${{ steps.binary-name.outputs.name }} ${{ steps.binary-name.outputs.name }}.sha256
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./${{ steps.binary-name.outputs.name }}
-        asset_name: ${{ steps.binary-name.outputs.name }}
-        asset_content_type: application/octet-stream
-
-    - name: Upload checksum to release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./${{ steps.binary-name.outputs.name }}.sha256
-        asset_name: ${{ steps.binary-name.outputs.name }}.sha256
-        asset_content_type: text/plain
 
   update-checksums:
     name: Update Release with Checksums
