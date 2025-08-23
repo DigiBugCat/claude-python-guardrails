@@ -8,7 +8,9 @@ use std::path::PathBuf;
 /// Smart Python automation hooks for Claude Code with intelligent linting and testing
 #[derive(Parser)]
 #[command(name = "claude-python-guardrails")]
-#[command(about = "Smart Python automation hooks for Claude Code with intelligent linting and testing")]
+#[command(
+    about = "Smart Python automation hooks for Claude Code with intelligent linting and testing"
+)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
