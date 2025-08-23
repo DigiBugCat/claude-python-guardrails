@@ -1,11 +1,11 @@
 [package]
 name = "claude-python-guardrails"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 authors = ["Andrew Sulistio <andrew@example.com>"]
-description = "Smart Python automation hooks for Claude Code with intelligent linting and testing"
+description = "AI-powered Python automation hooks for Claude Code with Cerebras intelligence and smart linting/testing"
 license = "MIT"
-keywords = ["claude", "python", "automation", "hooks", "linting"]
+keywords = ["claude", "python", "automation", "hooks", "linting", "cerebras", "ai"]
 categories = ["command-line-utilities", "development-tools", "development-tools::testing"]
 
 [dependencies]
@@ -29,6 +29,11 @@ chrono = { version = "0.4", features = ["serde"] }
 which = "6.0"
 log = "0.4"
 env_logger = "0.11"
+
+# HTTP client for Cerebras API
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
 
 [dev-dependencies]
 tempfile = "3.12"

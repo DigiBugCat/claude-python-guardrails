@@ -5,12 +5,14 @@ use std::path::Path;
 
 // New modules for automation functionality
 pub mod automation;
+pub mod cerebras;
 pub mod discovery;
 pub mod locking;
 pub mod protocol;
 
 // Re-export commonly used types for convenience
 pub use automation::{AutomationConfig, AutomationResult, AutomationRunner};
+pub use cerebras::{CerebrasConfig, ExclusionAnalysis, SmartExclusionAnalyzer};
 pub use discovery::{ProjectType, PythonLinter, PythonProject, PythonTester};
 pub use locking::{LockGuard, ProcessLock};
 pub use protocol::{HookInput, HookResponse};

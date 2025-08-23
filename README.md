@@ -1,6 +1,6 @@
 # Claude Python Guardrails
 
-**Python-specific automation system for Claude Code** - intelligent file exclusion + automated linting & testing. A drop-in replacement for generic smart-lint/smart-test hooks with Python-optimized patterns and built-in tool discovery.
+**AI-powered Python automation system for Claude Code** - intelligent file exclusion + automated linting & testing with Cerebras AI. A drop-in replacement for generic smart-lint/smart-test hooks with Python-optimized patterns, AI-powered analysis, and built-in tool discovery.
 
 ## ⚡ What's New: Smart Automation
 
@@ -11,6 +11,52 @@
 - **⚡ Zero-config**: Works out of the box with Python projects
 - **📋 Claude Code integration**: Drop-in replacement for generic hooks
 - **🧠 Smart exclusions**: Context-aware patterns (lint vs test vs general)
+
+## 🤖 AI-Powered Analysis with Cerebras
+
+**NEW**: Intelligent file analysis using Cerebras LLM API for smarter exclusion decisions beyond simple pattern matching.
+
+### Setup
+
+```bash
+# Set your Cerebras API key
+export CEREBRAS_API_KEY="your-api-key-here"
+
+# Analyze any file with AI
+claude-python-guardrails analyze src/models.py
+```
+
+### What It Does
+
+- **Understands file purpose**: Distinguishes between business logic, type definitions, configs, and generated code
+- **Context-aware decisions**: Different recommendations for linting vs testing vs general processing  
+- **Smart reasoning**: Provides clear explanations for why files should/shouldn't be processed
+- **Conservative fallback**: When API is unavailable, assumes files need full processing (safe default)
+
+### Example Output
+
+```bash
+$ claude-python-guardrails analyze src/user_model.py
+
+📁 File Analysis: src/user_model.py
+════════════════════════════════════════════════════════════
+
+📋 File Type: Pydantic Data Model
+🎯 Purpose: User data validation and serialization
+
+🚫 Exclusion Recommendations:
+  • General Processing: ✅ INCLUDE
+  • Linting: ❌ EXCLUDE  
+  • Testing: ✅ INCLUDE
+
+🤔 Reasoning:
+This file contains Pydantic model definitions with runtime type validation. 
+Linting may produce false positives for TYPE_CHECKING imports that are 
+actually needed at runtime for Pydantic field validation.
+
+💡 Configuration Recommendation:
+Add to lint_skip: ["**/models.py", "*_model.py"] to avoid TC003/TC004 false positives while keeping general processing and testing enabled.
+```
 
 ### Claude Code Hook Usage
 
@@ -153,6 +199,20 @@ claude-python-guardrails validate
 
 claude-python-guardrails validate custom-config.yaml
 # Validates specific file
+```
+
+### `analyze` 🤖 **NEW**
+AI-powered file analysis using Cerebras for intelligent exclusion recommendations.
+
+```bash
+claude-python-guardrails analyze src/models.py
+# Uses Cerebras AI to analyze file purpose and provide exclusion recommendations
+
+claude-python-guardrails analyze src/config.py --format json
+# Returns structured JSON output for programmatic use
+
+# Requires CEREBRAS_API_KEY environment variable
+export CEREBRAS_API_KEY="your-api-key-here"
 ```
 
 ### `smart-lint` ⚡ **NEW**
