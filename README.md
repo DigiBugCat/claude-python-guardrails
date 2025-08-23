@@ -1,6 +1,32 @@
 # Claude Python Guardrails
 
-Simple exclusion checker for Python projects using Claude Code. Provides intelligent file filtering with YAML configuration.
+**Python-specific automation system for Claude Code** - intelligent file exclusion + automated linting & testing. A drop-in replacement for generic smart-lint/smart-test hooks with Python-optimized patterns and built-in tool discovery.
+
+## ⚡ What's New: Smart Automation
+
+**Claude Python Guardrails v0.1.0** adds full automation capabilities equivalent to smart-lint.sh/smart-test.sh hooks but **Python-specific** and **faster**:
+
+- **🎯 Auto-discovery**: Finds `ruff`, `flake8`, `pylint`, `pytest` automatically  
+- **🔒 Concurrency control**: PID-based locking with configurable cooldowns
+- **⚡ Zero-config**: Works out of the box with Python projects
+- **📋 Claude Code integration**: Drop-in replacement for generic hooks
+- **🧠 Smart exclusions**: Context-aware patterns (lint vs test vs general)
+
+### Claude Code Hook Usage
+
+Replace your existing hooks with:
+
+```bash
+# Instead of ~/.claude/hooks/smart-lint.sh
+claude-python-guardrails smart-lint
+
+# Instead of ~/.claude/hooks/smart-test.sh  
+claude-python-guardrails smart-test
+```
+
+**Exit codes match hooks exactly**: `0` = silent, `2` = show message (success or error)
+
+> **📖 Full Claude Code Integration Guide**: See [CLAUDE_CODE_HOOKS.md](./CLAUDE_CODE_HOOKS.md) for complete hook configuration, troubleshooting, and advanced usage.
 
 ## 🚀 Quick Start
 
@@ -16,7 +42,7 @@ cargo build --release
 cargo install --path .
 ```
 
-### Basic Usage
+### File Exclusion Usage
 
 ```bash
 # Generate default configuration
@@ -50,21 +76,35 @@ exclude:
   patterns:
     - "*.pyc"
     - "__pycache__/"
-    - ".venv/"
-    - "target/"
+    - ".venv/**"
+    - "target/**"
     
   python:
     lint_skip:
-      - "migrations/"
+      - "migrations/**"
       - "*_pb2.py"
+      - "*.generated.py"
     test_skip:
       - "conftest.py"
       - "test_*.py"
+      - "tests/fixtures/**"
 
 rules:
   max_file_size: "10MB"
   skip_binary_files: true
   skip_generated_files: true
+
+automation:
+  lint:
+    enabled: true
+    cooldown_seconds: 2
+    timeout_seconds: 20
+    preferred_tool: "ruff"  # or "flake8", "pylint"
+  test:
+    enabled: true
+    cooldown_seconds: 2
+    timeout_seconds: 20
+    preferred_tool: "pytest"  # or "unittest"
 ```
 
 ## 🔧 CLI Commands
@@ -113,6 +153,28 @@ claude-python-guardrails validate
 
 claude-python-guardrails validate custom-config.yaml
 # Validates specific file
+```
+
+### `smart-lint` ⚡ **NEW**
+Smart linting automation for Claude Code hooks.
+
+```bash
+# Automatically discovers and runs Python linters (ruff → flake8 → pylint)
+claude-python-guardrails smart-lint
+
+# Reads JSON from stdin, walks up to find project root
+# Exit codes: 0 = silent, 2 = show message (success/error)
+```
+
+### `smart-test` ⚡ **NEW**
+Smart testing automation for Claude Code hooks.
+
+```bash
+# Automatically discovers and runs Python test runners (pytest → unittest)
+claude-python-guardrails smart-test  
+
+# Reads JSON from stdin, walks up to find project root
+# Exit codes: 0 = silent, 2 = show message (success/error)
 ```
 
 ## 🎯 Use Cases
@@ -273,6 +335,12 @@ claude-python-guardrails -c /path/to/custom.yaml check file.py
 - **Fast**: Compiled Rust binary with minimal dependencies
 - **Efficient**: Glob pattern matching with `globset` crate
 - **Smart**: Context-aware exclusions (lint vs test vs general)
+
+## 📚 Documentation
+
+- **[Claude Code Hooks Integration](./CLAUDE_CODE_HOOKS.md)** - Complete guide to setting up automation hooks
+- **[Configuration Reference](./guardrails.yaml)** - Example YAML configuration with all options
+- **[Architecture Guide](./CLAUDE.md)** - Development and contribution guide
 
 ## 🙏 Acknowledgments
 

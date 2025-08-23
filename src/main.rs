@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use claude_python_guardrails::{default_config, GuardrailsChecker};
+use claude_python_guardrails::{default_config, AutomationConfig, AutomationRunner, GuardrailsChecker};
 use std::path::PathBuf;
 
 /// Simple exclusion checker for Python projects using Claude Code
@@ -50,9 +50,19 @@ enum Commands {
         #[arg(default_value = "guardrails.yaml")]
         config: PathBuf,
     },
+    /// Smart linting automation (Claude Code hook compatible)
+    SmartLint,
+    /// Smart testing automation (Claude Code hook compatible)
+    SmartTest,
 }
 
 fn main() -> Result<()> {
+    // Initialize logging (safe to call multiple times)
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
+    let _ = env_logger::try_init();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -147,6 +157,22 @@ fn main() -> Result<()> {
                 std::process::exit(1);
             }
         },
+
+        Commands::SmartLint => {
+            let result = handle_smart_automation(&cli, "lint")?;
+            if let Some(message) = result.message() {
+                eprintln!("{}", message);
+            }
+            std::process::exit(result.exit_code());
+        }
+
+        Commands::SmartTest => {
+            let result = handle_smart_automation(&cli, "test")?;
+            if let Some(message) = result.message() {
+                eprintln!("{}", message);
+            }
+            std::process::exit(result.exit_code());
+        }
     }
 }
 
@@ -174,6 +200,20 @@ fn load_checker(cli: &Cli) -> Result<GuardrailsChecker> {
                 GuardrailsChecker::from_config(default_config())
             }
         }
+    }
+}
+
+fn handle_smart_automation(cli: &Cli, operation: &str) -> Result<claude_python_guardrails::AutomationResult> {
+    use claude_python_guardrails::AutomationResult;
+
+    let checker = load_checker(cli)?;
+    let automation_config = AutomationConfig::from(&checker.config().automation);
+    let runner = AutomationRunner::new(automation_config, checker);
+
+    match operation {
+        "lint" => runner.handle_smart_lint(),
+        "test" => runner.handle_smart_test(),
+        _ => Ok(AutomationResult::NoAction),
     }
 }
 

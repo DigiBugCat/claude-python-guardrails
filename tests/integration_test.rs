@@ -7,6 +7,8 @@ use tempfile::TempDir;
 fn run_cli(args: &[&str]) -> Result<(String, String, i32)> {
     let output = Command::new("cargo")
         .arg("run")
+        .arg("--manifest-path")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
         .arg("--")
         .args(args)
         .output()?;
@@ -22,6 +24,8 @@ fn run_cli(args: &[&str]) -> Result<(String, String, i32)> {
 fn run_cli_in_dir(args: &[&str], dir: &std::path::Path) -> Result<(String, String, i32)> {
     let output = Command::new("cargo")
         .arg("run")
+        .arg("--manifest-path")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
         .arg("--")
         .args(args)
         .current_dir(dir)
@@ -185,6 +189,15 @@ rules:
   max_file_size: "10MB"
   skip_binary_files: true
   skip_generated_files: true
+automation:
+  lint:
+    enabled: true
+    cooldown_seconds: 2
+    timeout_seconds: 20
+  test:
+    enabled: true
+    cooldown_seconds: 2
+    timeout_seconds: 20
 "#;
 
     fs::write(&config_path, valid_config)?;
@@ -216,6 +229,15 @@ rules:
   max_file_size: "5MB"
   skip_binary_files: true
   skip_generated_files: false
+automation:
+  lint:
+    enabled: true
+    cooldown_seconds: 2
+    timeout_seconds: 20
+  test:
+    enabled: true
+    cooldown_seconds: 2
+    timeout_seconds: 20
 "#;
 
     fs::write(&config_path, valid_config)?;
@@ -285,6 +307,15 @@ rules:
   max_file_size: "10MB"
   skip_binary_files: false
   skip_generated_files: false
+automation:
+  lint:
+    enabled: true
+    cooldown_seconds: 2
+    timeout_seconds: 20
+  test:
+    enabled: true
+    cooldown_seconds: 2
+    timeout_seconds: 20
 "#;
 
     fs::write(&config_path, custom_config)?;
@@ -322,6 +353,15 @@ rules:
   max_file_size: "10MB"
   skip_binary_files: false
   skip_generated_files: false
+automation:
+  lint:
+    enabled: true
+    cooldown_seconds: 2
+    timeout_seconds: 20
+  test:
+    enabled: true
+    cooldown_seconds: 2
+    timeout_seconds: 20
 "#;
 
     fs::write(&config_path, auto_config)?;
