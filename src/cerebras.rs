@@ -109,7 +109,7 @@ impl SmartExclusionAnalyzer {
         }
 
         let file_content = self.read_file_content(file_path)?;
-        
+
         // Handle API errors gracefully with conservative defaults
         match self.call_cerebras_api(file_path, &file_content).await {
             Ok(analysis) => Ok(analysis),
@@ -259,50 +259,65 @@ impl SmartExclusionAnalyzer {
     /// Create test exclusion analysis prompt (based on test-filter.py)
     #[allow(dead_code)]
     fn create_test_analysis_prompt(&self, file_path: &Path, file_content: &str) -> String {
-        let file_name = file_path.file_name()
+        let file_name = file_path
+            .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("unknown");
-        let extension = file_path.extension()
+        let extension = file_path
+            .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("");
 
         // Get project context - look for existing tests
         let project_root = file_path.parent().unwrap_or(Path::new("."));
         let mut test_context = String::new();
-        
+
         // Look for test directory and existing tests
         let test_dirs = ["tests", "test"];
         for test_dir_name in test_dirs.iter() {
             let test_dir = project_root.join(test_dir_name);
             if test_dir.exists() {
-                let module_name = file_path.file_stem()
+                let module_name = file_path
+                    .file_stem()
                     .and_then(|stem| stem.to_str())
                     .unwrap_or("module");
-                
+
                 let possible_test_files = [
                     test_dir.join(format!("test_{}.py", module_name)),
                     test_dir.join(format!("{}_test.py", module_name)),
-                    test_dir.join("unit").join(format!("test_{}.py", module_name)),
-                    test_dir.join("integration").join(format!("test_{}.py", module_name)),
+                    test_dir
+                        .join("unit")
+                        .join(format!("test_{}.py", module_name)),
+                    test_dir
+                        .join("integration")
+                        .join(format!("test_{}.py", module_name)),
                 ];
 
                 for test_file in &possible_test_files {
                     if test_file.exists() {
-                        test_context = format!("\n\nExisting test file found at: {}", 
-                            test_file.strip_prefix(project_root).unwrap_or(test_file).display());
+                        test_context = format!(
+                            "\n\nExisting test file found at: {}",
+                            test_file
+                                .strip_prefix(project_root)
+                                .unwrap_or(test_file)
+                                .display()
+                        );
                         break;
                     }
                 }
 
                 if test_context.is_empty() {
-                    test_context = format!("\n\nNo test file found. Suggested location: {}/unit/test_{}.py", 
-                        test_dir_name, module_name);
+                    test_context = format!(
+                        "\n\nNo test file found. Suggested location: {}/unit/test_{}.py",
+                        test_dir_name, module_name
+                    );
                 }
                 break;
             }
         }
 
-        format!(r#"You are an expert software developer analyzing whether a file needs tests.
+        format!(
+            r#"You are an expert software developer analyzing whether a file needs tests.
 
 File: {}
 File name: {}
@@ -337,21 +352,30 @@ Analyze this file and determine:
    - If no tests needed: "No action needed - file is configuration/type definitions only"
    - If tests are sufficient: "Tests are adequate - continue with development"
 
-IMPORTANT: If tests are needed but missing, use strong, clear language that makes it obvious that tests MUST be written before proceeding. Use warning emojis and capital letters for emphasis."#, 
-            file_path.display(), file_name, extension, test_context, extension, file_content)
+IMPORTANT: If tests are needed but missing, use strong, clear language that makes it obvious that tests MUST be written before proceeding. Use warning emojis and capital letters for emphasis."#,
+            file_path.display(),
+            file_name,
+            extension,
+            test_context,
+            extension,
+            file_content
+        )
     }
 
     /// Create lint exclusion analysis prompt (based on general code analysis)
     #[allow(dead_code)]
     fn create_lint_analysis_prompt(&self, file_path: &Path, _file_content: &str) -> String {
-        let file_name = file_path.file_name()
+        let file_name = file_path
+            .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("unknown");
-        let extension = file_path.extension()
+        let extension = file_path
+            .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("");
 
-        format!(r#"You are an expert Python developer analyzing whether a file should be excluded from linting.
+        format!(
+            r#"You are an expert Python developer analyzing whether a file should be excluded from linting.
 
 File: {}
 File name: {}
@@ -382,21 +406,27 @@ Determine if this file should be excluded from linting based on:
 - Test files MAY be excluded if they need relaxed style rules
 - Configuration files should generally be INCLUDED for consistency
 
-Analyze this file and provide a clear recommendation."#, 
-            file_path.display(), file_name, extension)
+Analyze this file and provide a clear recommendation."#,
+            file_path.display(),
+            file_name,
+            extension
+        )
     }
 
-    /// Create general exclusion analysis prompt 
+    /// Create general exclusion analysis prompt
     #[allow(dead_code)]
     fn create_general_analysis_prompt(&self, file_path: &Path, file_content: &str) -> String {
-        let file_name = file_path.file_name()
+        let file_name = file_path
+            .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("unknown");
-        let extension = file_path.extension()
+        let extension = file_path
+            .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("");
 
-        format!(r#"You are an expert software developer analyzing whether a file should be excluded from ALL code quality processing.
+        format!(
+            r#"You are an expert software developer analyzing whether a file should be excluded from ALL code quality processing.
 
 File: {}
 File name: {}
@@ -432,8 +462,11 @@ Only exclude files that are:
 3. Temporary or cache files
 4. Third-party code that shouldn't be modified
 
-User-authored code should almost always be included in quality processing."#, 
-            file_path.display(), file_name, extension)
+User-authored code should almost always be included in quality processing."#,
+            file_path.display(),
+            file_name,
+            extension
+        )
     }
 
     /// Create a comprehensive analysis prompt (covers all exclusion contexts)
@@ -676,24 +709,39 @@ mod tests {
     fn test_conservative_analysis() {
         let analyzer = SmartExclusionAnalyzer::new(CerebrasConfig::default());
         let test_file = Path::new("src/business_logic.py");
-        
+
         let analysis = analyzer.conservative_analysis(test_file, "API error occurred");
-        
+
         // Conservative analysis should never exclude files
-        assert!(!analysis.should_exclude_general, "Conservative analysis should not exclude files from general processing");
-        assert!(!analysis.should_exclude_lint, "Conservative analysis should not exclude files from linting");
-        assert!(!analysis.should_exclude_test, "Conservative analysis should not exclude files from testing");
-        
+        assert!(
+            !analysis.should_exclude_general,
+            "Conservative analysis should not exclude files from general processing"
+        );
+        assert!(
+            !analysis.should_exclude_lint,
+            "Conservative analysis should not exclude files from linting"
+        );
+        assert!(
+            !analysis.should_exclude_test,
+            "Conservative analysis should not exclude files from testing"
+        );
+
         // Should mention conservative defaults
-        assert!(analysis.reasoning.contains("conservative defaults"), 
-                "Reasoning should mention conservative defaults, got: {}", analysis.reasoning);
-        assert!(analysis.reasoning.contains("API error occurred"), 
-                "Reasoning should include the error reason, got: {}", analysis.reasoning);
-        
+        assert!(
+            analysis.reasoning.contains("conservative defaults"),
+            "Reasoning should mention conservative defaults, got: {}",
+            analysis.reasoning
+        );
+        assert!(
+            analysis.reasoning.contains("API error occurred"),
+            "Reasoning should include the error reason, got: {}",
+            analysis.reasoning
+        );
+
         // Should indicate API unavailability
         assert_eq!(analysis.file_type, "Unknown (API unavailable)");
         assert!(analysis.purpose.contains("Unknown - assuming requires"));
-        
+
         // Should include warning in recommendation
         assert!(analysis.exclusion_recommendation.contains("⚠️"));
         assert!(analysis.exclusion_recommendation.contains("API error"));
@@ -702,7 +750,7 @@ mod tests {
     #[test]
     fn test_heuristic_analysis_python_files() {
         let analyzer = SmartExclusionAnalyzer::new(CerebrasConfig::default());
-        
+
         // Test regular Python file
         let regular_py = Path::new("src/models.py");
         let analysis = analyzer.heuristic_analysis(regular_py);
@@ -710,7 +758,7 @@ mod tests {
         assert!(!analysis.should_exclude_lint);
         assert!(!analysis.should_exclude_test);
         assert!(analysis.reasoning.contains("Regular Python files"));
-        
+
         // Test test file
         let test_file = Path::new("test_example.py");
         let analysis = analyzer.heuristic_analysis(test_file);
@@ -718,7 +766,7 @@ mod tests {
         assert!(analysis.should_exclude_lint);
         assert!(analysis.should_exclude_test);
         assert!(analysis.reasoning.contains("Test files"));
-        
+
         // Test cache file (.pyc extension matches first)
         let cache_file = Path::new("__pycache__/module.pyc");
         let analysis = analyzer.heuristic_analysis(cache_file);
@@ -726,7 +774,7 @@ mod tests {
         assert!(analysis.should_exclude_lint);
         assert!(analysis.should_exclude_test);
         assert!(analysis.reasoning.contains("Compiled Python files"));
-        
+
         // Test cache directory file (filename contains __pycache__)
         let cache_dir_file = Path::new("module__pycache__temp.py");
         let analysis = analyzer.heuristic_analysis(cache_dir_file);
@@ -739,7 +787,7 @@ mod tests {
     #[test]
     fn test_heuristic_analysis_non_python_files() {
         let analyzer = SmartExclusionAnalyzer::new(CerebrasConfig::default());
-        
+
         // Test Rust file
         let rust_file = Path::new("src/main.rs");
         let analysis = analyzer.heuristic_analysis(rust_file);
@@ -747,7 +795,7 @@ mod tests {
         assert!(analysis.should_exclude_lint);
         assert!(analysis.should_exclude_test);
         assert!(analysis.reasoning.contains("Non-Python files"));
-        
+
         // Test config file
         let config_file = Path::new("config.yaml");
         let analysis = analyzer.heuristic_analysis(config_file);
@@ -768,15 +816,20 @@ mod tests {
         };
         let analyzer = SmartExclusionAnalyzer::new(config);
 
-        // We can't easily mock the HTTP client, but we can verify the conservative_analysis 
+        // We can't easily mock the HTTP client, but we can verify the conservative_analysis
         // method directly works as expected for the fallback case
-        let conservative_result = analyzer.conservative_analysis(Path::new("test.py"), "simulated API error");
-        
+        let conservative_result =
+            analyzer.conservative_analysis(Path::new("test.py"), "simulated API error");
+
         // Conservative analysis should never exclude
         assert!(!conservative_result.should_exclude_general);
         assert!(!conservative_result.should_exclude_lint);
         assert!(!conservative_result.should_exclude_test);
-        assert!(conservative_result.reasoning.contains("conservative defaults"));
-        assert!(conservative_result.reasoning.contains("simulated API error"));
+        assert!(conservative_result
+            .reasoning
+            .contains("conservative defaults"));
+        assert!(conservative_result
+            .reasoning
+            .contains("simulated API error"));
     }
 }

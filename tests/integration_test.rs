@@ -445,18 +445,22 @@ fn test_analyze_command_python_file() -> Result<()> {
 
     // Test analyze command
     let (stdout, _stderr, exit_code) = run_cli(&["analyze", py_file.to_str().unwrap()])?;
-    
+
     // Should exit 0 (successful analysis)
     assert_eq!(exit_code, 0);
-    
+
     // Should show analysis output
     assert!(stdout.contains("📁 File Analysis:"));
     assert!(stdout.contains("🚫 Exclusion Recommendations:"));
     assert!(stdout.contains("🤔 Reasoning:"));
     assert!(stdout.contains("💡 Configuration Recommendation:"));
-    
+
     // The output should contain either AI analysis or heuristic analysis
-    assert!(stdout.contains("business") || stdout.contains("Regular Python files") || stdout.contains("Python source"));
+    assert!(
+        stdout.contains("business")
+            || stdout.contains("Regular Python files")
+            || stdout.contains("Python source")
+    );
 
     Ok(())
 }
@@ -467,14 +471,15 @@ fn test_analyze_command_json_format() -> Result<()> {
     let py_file = temp_dir.path().join("models.py");
     std::fs::write(&py_file, "class UserModel: pass")?;
 
-    let (stdout, _stderr, exit_code) = run_cli(&["analyze", py_file.to_str().unwrap(), "--format", "json"])?;
-    
+    let (stdout, _stderr, exit_code) =
+        run_cli(&["analyze", py_file.to_str().unwrap(), "--format", "json"])?;
+
     assert_eq!(exit_code, 0);
-    
+
     // Should be valid JSON
-    let analysis: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("Output should be valid JSON");
-    
+    let analysis: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
     // Should have required fields
     assert!(analysis.get("should_exclude_general").is_some());
     assert!(analysis.get("should_exclude_lint").is_some());
@@ -490,10 +495,10 @@ fn test_analyze_command_json_format() -> Result<()> {
 #[test]
 fn test_analyze_command_nonexistent_file() -> Result<()> {
     let (stdout, stderr, exit_code) = run_cli(&["analyze", "nonexistent_file.py"])?;
-    
+
     // Should exit 1 (error - file doesn't exist)
     assert_eq!(exit_code, 1);
-    
+
     // Should show error message
     assert!(stderr.contains("File does not exist") || stderr.contains("❌ Analysis failed:"));
     assert!(stdout.is_empty());
@@ -508,10 +513,9 @@ fn test_analyze_command_non_python_file() -> Result<()> {
     std::fs::write(&config_file, "database: localhost")?;
 
     let (stdout, _stderr, exit_code) = run_cli(&["analyze", config_file.to_str().unwrap()])?;
-    
-    
+
     assert_eq!(exit_code, 0);
-    
+
     // Should contain exclusion recommendations (may include or exclude various things)
     assert!(stdout.contains("❌ EXCLUDE") || stdout.contains("✅ INCLUDE"));
     assert!(stdout.contains("configuration") || stdout.contains("YAML") || stdout.contains("yaml"));
@@ -526,10 +530,9 @@ fn test_analyze_command_test_file() -> Result<()> {
     std::fs::write(&test_file, "def test_something(): assert True")?;
 
     let (stdout, _stderr, exit_code) = run_cli(&["analyze", test_file.to_str().unwrap()])?;
-    
-    
+
     assert_eq!(exit_code, 0);
-    
+
     // Test files should be excluded from testing and possibly linting
     assert!(stdout.contains("❌ EXCLUDE") || stdout.contains("✅ INCLUDE"));
     assert!(stdout.contains("test") || stdout.contains("Test"));
@@ -544,9 +547,9 @@ fn test_analyze_command_verbose() -> Result<()> {
     std::fs::write(&py_file, "print('hello world')")?;
 
     let (stdout, stderr, exit_code) = run_cli(&["-v", "analyze", py_file.to_str().unwrap()])?;
-    
+
     assert_eq!(exit_code, 0);
-    
+
     // Verbose mode should show additional info
     assert!(stdout.contains("🔧 Debug Information:") || stderr.contains("Analyzing file:"));
 
@@ -563,11 +566,12 @@ fn test_analyze_command_different_formats() -> Result<()> {
     let (stdout_text, _stderr, exit_code) = run_cli(&["analyze", py_file.to_str().unwrap()])?;
     assert_eq!(exit_code, 0);
     assert!(stdout_text.contains("📁 File Analysis:"));
-    
+
     // Test JSON format
-    let (stdout_json, _stderr, exit_code) = run_cli(&["analyze", py_file.to_str().unwrap(), "--format", "json"])?;
+    let (stdout_json, _stderr, exit_code) =
+        run_cli(&["analyze", py_file.to_str().unwrap(), "--format", "json"])?;
     assert_eq!(exit_code, 0);
-    
+
     // JSON should be different from text
     assert_ne!(stdout_text, stdout_json);
     assert!(serde_json::from_str::<serde_json::Value>(&stdout_json).is_ok());
