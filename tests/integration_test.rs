@@ -43,7 +43,7 @@ fn test_help_command() -> Result<()> {
     let (stdout, _stderr, exit_code) = run_cli(&["--help"])?;
 
     assert_eq!(exit_code, 0);
-    assert!(stdout.contains("Simple exclusion checker for Python projects"));
+    assert!(stdout.contains("Smart Python automation hooks for Claude Code"));
     assert!(stdout.contains("check"));
     assert!(stdout.contains("lint"));
     assert!(stdout.contains("test"));
