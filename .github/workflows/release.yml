@@ -181,3 +181,55 @@ jobs:
         gh release upload ${{ needs.create-release.outputs.version }} checksums.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew:
+    name: Update Homebrew Formula
+    runs-on: ubuntu-latest
+    needs: [create-release, update-checksums]
+    if: needs.create-release.outputs.release_id
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract version and calculate SHA256
+      id: release-info
+      run: |
+        VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        
+        # Download and calculate SHA256 of the source tarball
+        curl -L -o source.tar.gz "https://github.com/${{ github.repository }}/archive/refs/tags/v$VERSION.tar.gz"
+        SHA256=$(sha256sum source.tar.gz | cut -d' ' -f1)
+        echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+        
+        echo "Version: v$VERSION"
+        echo "SHA256: $SHA256"
+
+    - name: Clone Homebrew tap repository
+      run: |
+        git clone https://${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/DigiBugCat/homebrew-dev-tooling.git homebrew-tap
+      env:
+        HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+    - name: Update Homebrew formula
+      run: |
+        cd homebrew-tap
+        
+        # Configure git
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Update the formula
+        sed -i 's|url ".*"|url "https://github.com/${{ github.repository }}/archive/refs/tags/v${{ steps.release-info.outputs.version }}.tar.gz"|' Formula/claude-python-guardrails.rb
+        sed -i 's|sha256 ".*"|sha256 "${{ steps.release-info.outputs.sha256 }}"|' Formula/claude-python-guardrails.rb  
+        sed -i 's|version ".*"|version "${{ steps.release-info.outputs.version }}"|' Formula/claude-python-guardrails.rb
+        
+        # Commit and push changes
+        git add Formula/claude-python-guardrails.rb
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update claude-python-guardrails to v${{ steps.release-info.outputs.version }}"
+          git push origin main
+          echo "Successfully updated Homebrew formula to v${{ steps.release-info.outputs.version }}"
+        fi
