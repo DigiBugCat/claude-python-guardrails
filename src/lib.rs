@@ -3,12 +3,26 @@ use globset::{Glob, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+// New modules for automation functionality
+pub mod automation;
+pub mod discovery;
+pub mod locking;
+pub mod protocol;
+
+// Re-export commonly used types for convenience
+pub use automation::{AutomationConfig, AutomationResult, AutomationRunner};
+pub use discovery::{ProjectType, PythonLinter, PythonProject, PythonTester};
+pub use locking::{LockGuard, ProcessLock};
+pub use protocol::{HookInput, HookResponse};
+
 /// Main configuration structure for guardrails
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GuardrailsConfig {
     pub exclude: ExclusionConfig,
     #[serde(default)]
     pub rules: RulesConfig,
+    #[serde(default)]
+    pub automation: AutomationYamlConfig,
 }
 
 /// Exclusion configuration
@@ -56,12 +70,71 @@ impl Default for RulesConfig {
     }
 }
 
+/// Automation configuration for YAML files
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct AutomationYamlConfig {
+    /// Linting automation settings
+    #[serde(default)]
+    pub lint: AutomationCommandConfig,
+    /// Testing automation settings
+    #[serde(default)]
+    pub test: AutomationCommandConfig,
+}
+
+/// Configuration for a specific automation command
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AutomationCommandConfig {
+    /// Whether this command is enabled
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Cooldown period in seconds
+    #[serde(default = "default_cooldown_seconds")]
+    pub cooldown_seconds: u64,
+    /// Timeout in seconds
+    #[serde(default = "default_timeout_seconds")]
+    pub timeout_seconds: u64,
+    /// Preferred tool to use (optional)
+    pub preferred_tool: Option<String>,
+}
+
+impl Default for AutomationCommandConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            cooldown_seconds: default_cooldown_seconds(),
+            timeout_seconds: default_timeout_seconds(),
+            preferred_tool: None,
+        }
+    }
+}
+
+impl From<&AutomationYamlConfig> for AutomationConfig {
+    fn from(yaml_config: &AutomationYamlConfig) -> Self {
+        Self {
+            lint_enabled: yaml_config.lint.enabled,
+            test_enabled: yaml_config.test.enabled,
+            lint_cooldown_seconds: yaml_config.lint.cooldown_seconds,
+            test_cooldown_seconds: yaml_config.test.cooldown_seconds,
+            lint_timeout_seconds: yaml_config.lint.timeout_seconds,
+            test_timeout_seconds: yaml_config.test.timeout_seconds,
+        }
+    }
+}
+
 fn default_max_file_size() -> String {
     "10MB".to_string()
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_cooldown_seconds() -> u64 {
+    2
+}
+
+fn default_timeout_seconds() -> u64 {
+    20
 }
 
 /// The main guardrails checker
@@ -313,6 +386,7 @@ pub fn default_config() -> GuardrailsConfig {
             },
         },
         rules: RulesConfig::default(),
+        automation: AutomationYamlConfig::default(),
     }
 }
 
@@ -481,6 +555,7 @@ exclude:
                 skip_binary_files: false,
                 skip_generated_files: false,
             },
+            automation: AutomationYamlConfig::default(),
         };
         let checker = GuardrailsChecker::from_config(config)?;
 
@@ -508,6 +583,7 @@ exclude:
                 },
             },
             rules: RulesConfig::default(),
+            automation: AutomationYamlConfig::default(),
         };
         let checker = GuardrailsChecker::from_config(config)?;
 
