@@ -1,12 +1,12 @@
 [package]
 name = "claude-python-guardrails"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Andrew Sulistio <andrew@example.com>"]
-description = "Simple exclusion checker for Python projects using Claude Code"
+description = "Smart Python automation hooks for Claude Code with intelligent linting and testing"
 license = "MIT"
-keywords = ["claude", "python", "exclusion", "guardrails"]
-categories = ["command-line-utilities", "development-tools"]
+keywords = ["claude", "python", "automation", "hooks", "linting"]
+categories = ["command-line-utilities", "development-tools", "development-tools::testing"]
 
 [dependencies]
 # Configuration parsing
