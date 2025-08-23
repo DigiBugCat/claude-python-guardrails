@@ -163,7 +163,7 @@ fn main() -> Result<()> {
         Commands::SmartLint => {
             let result = handle_smart_automation(&cli, "lint")?;
             if let Some(message) = result.message() {
-                eprintln!("{}", message);
+                eprintln!("{message}");
             }
             std::process::exit(result.exit_code());
         }
@@ -171,7 +171,7 @@ fn main() -> Result<()> {
         Commands::SmartTest => {
             let result = handle_smart_automation(&cli, "test")?;
             if let Some(message) = result.message() {
-                eprintln!("{}", message);
+                eprintln!("{message}");
             }
             std::process::exit(result.exit_code());
         }

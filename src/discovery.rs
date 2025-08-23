@@ -57,8 +57,6 @@ impl PythonProject {
 
     /// Walk up the directory tree to find the Python project root
     fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
-        let mut current_dir = start_dir;
-
         // Convert to absolute path if needed
         let absolute_start = if start_dir.is_absolute() {
             start_dir.to_path_buf()
@@ -66,7 +64,7 @@ impl PythonProject {
             std::env::current_dir().ok()?.join(start_dir)
         };
 
-        current_dir = &absolute_start;
+        let mut current_dir = absolute_start.as_path();
 
         loop {
             // Check for Python project markers
@@ -125,14 +123,14 @@ impl PythonProject {
             for entry in entries.flatten() {
                 let path = entry.path();
 
-                if path.is_file() && path.extension().map_or(false, |ext| ext == "py") {
+                if path.is_file() && path.extension().is_some_and(|ext| ext == "py") {
                     return true;
                 }
 
                 if path.is_dir()
                     && !path
                         .file_name()
-                        .map_or(false, |name| name.to_string_lossy().starts_with('.'))
+                        .is_some_and(|name| name.to_string_lossy().starts_with('.'))
                     && Self::has_python_files(&path, max_depth - 1)
                 {
                     return true;

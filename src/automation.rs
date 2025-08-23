@@ -3,7 +3,7 @@ use std::path::Path;
 use std::process::{Command, ExitStatus};
 use std::time::Duration;
 
-use crate::discovery::{PythonLinter, PythonProject, PythonTester};
+use crate::discovery::PythonProject;
 use crate::locking::LockGuard;
 use crate::protocol::HookInput;
 use crate::GuardrailsChecker;
@@ -333,7 +333,6 @@ impl AutomationResult {
 mod tests {
     use super::*;
     use crate::default_config;
-    use std::fs;
     use tempfile::TempDir;
 
     fn create_test_runner() -> AutomationRunner {

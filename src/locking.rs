@@ -4,7 +4,6 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
-use std::time::SystemTime;
 
 /// Manages PID-based locking to prevent concurrent operations
 pub struct ProcessLock {
@@ -90,7 +89,7 @@ impl ProcessLock {
         let now = Utc::now();
         let timestamp = now.timestamp();
 
-        let content = format!("\n{}", timestamp);
+        let content = format!("\n{timestamp}");
         fs::write(&self.lock_file, content)
             .context("Failed to write completion timestamp to lock file")?;
 
@@ -108,7 +107,7 @@ impl ProcessLock {
         hasher.update(absolute_path.to_string_lossy().as_bytes());
         let result = hasher.finalize();
 
-        Ok(format!("{:x}", result)[..16].to_string())
+        Ok(format!("{result:x}")[..16].to_string())
     }
 
     /// Check if a process with the given PID is still running
@@ -117,7 +116,7 @@ impl ProcessLock {
         {
             use std::process::Command;
             Command::new("kill")
-                .args(&["-0", &pid.to_string()])
+                .args(["-0", &pid.to_string()])
                 .output()
                 .map(|output| output.status.success())
                 .unwrap_or(false)
@@ -161,7 +160,7 @@ impl LockGuard {
 impl Drop for LockGuard {
     fn drop(&mut self) {
         if let Err(e) = self.lock.release() {
-            eprintln!("Warning: Failed to release lock: {}", e);
+            eprintln!("Warning: Failed to release lock: {e}");
         }
     }
 }

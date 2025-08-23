@@ -56,12 +56,8 @@ impl HookInput {
     /// Extract the file path from the tool input
     pub fn file_path(&self) -> Option<PathBuf> {
         match self.tool_name.as_str() {
-            "NotebookEdit" => self
-                .tool_input
-                .notebook_path
-                .as_ref()
-                .map(|p| PathBuf::from(p)),
-            _ => self.tool_input.file_path.as_ref().map(|p| PathBuf::from(p)),
+            "NotebookEdit" => self.tool_input.notebook_path.as_ref().map(PathBuf::from),
+            _ => self.tool_input.file_path.as_ref().map(PathBuf::from),
         }
     }
 }

@@ -71,7 +71,7 @@ impl Default for RulesConfig {
 }
 
 /// Automation configuration for YAML files
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AutomationYamlConfig {
     /// Linting automation settings
     #[serde(default)]
@@ -95,15 +95,6 @@ pub struct AutomationCommandConfig {
     pub timeout_seconds: u64,
     /// Preferred tool to use (optional)
     pub preferred_tool: Option<String>,
-}
-
-impl Default for AutomationYamlConfig {
-    fn default() -> Self {
-        Self {
-            lint: AutomationCommandConfig::default(),
-            test: AutomationCommandConfig::default(),
-        }
-    }
 }
 
 impl Default for AutomationCommandConfig {
