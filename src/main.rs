@@ -1,15 +1,16 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use claude_python_guardrails::{
-    default_config, AutomationConfig, AutomationRunner, GuardrailsChecker,
+    default_config, AutomationConfig, AutomationRunner, CerebrasConfig, ExclusionAnalysis,
+    GuardrailsChecker, SmartExclusionAnalyzer,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-/// Smart Python automation hooks for Claude Code with intelligent linting and testing
+/// AI-powered Python automation hooks for Claude Code with Cerebras intelligence and smart linting/testing
 #[derive(Parser)]
 #[command(name = "claude-python-guardrails")]
 #[command(
-    about = "Smart Python automation hooks for Claude Code with intelligent linting and testing"
+    about = "AI-powered Python automation hooks for Claude Code with Cerebras intelligence and smart linting/testing"
 )]
 #[command(version)]
 struct Cli {
@@ -54,13 +55,22 @@ enum Commands {
         #[arg(default_value = "guardrails.yaml")]
         config: PathBuf,
     },
+    /// Analyze a file using Cerebras AI for smart exclusion recommendations (PreToolUse hook compatible)
+    Analyze {
+        /// File path to analyze
+        file: PathBuf,
+        /// Output format (json or text)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
     /// Smart linting automation (Claude Code hook compatible)
     SmartLint,
     /// Smart testing automation (Claude Code hook compatible)
     SmartTest,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Initialize logging (safe to call multiple times)
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "info");
@@ -162,6 +172,11 @@ fn main() -> Result<()> {
             }
         },
 
+        Commands::Analyze {
+            ref file,
+            ref format,
+        } => handle_analyze_command(&cli, file.as_path(), format).await,
+
         Commands::SmartLint => {
             let result = handle_smart_automation(&cli, "lint")?;
             if let Some(message) = result.message() {
@@ -221,6 +236,116 @@ fn handle_smart_automation(
         "lint" => runner.handle_smart_lint(),
         "test" => runner.handle_smart_test(),
         _ => Ok(AutomationResult::NoAction),
+    }
+}
+
+async fn handle_analyze_command(cli: &Cli, file: &Path, format: &str) -> Result<()> {
+    if !file.exists() {
+        return Err(anyhow::anyhow!("File does not exist: {}", file.display()));
+    }
+
+    // Initialize Cerebras configuration
+    let cerebras_config = CerebrasConfig::default();
+
+    if !cerebras_config.enabled {
+        println!("⚠️  Cerebras integration disabled. Set CEREBRAS_API_KEY environment variable to enable AI analysis.");
+        println!("Falling back to basic heuristic analysis...\n");
+    }
+
+    let analyzer = SmartExclusionAnalyzer::new(cerebras_config);
+
+    if cli.verbose {
+        println!("🔍 Analyzing file: {}", file.display());
+        println!("Output format: {}", format);
+        println!();
+    }
+
+    match analyzer.analyze_file(file).await {
+        Ok(analysis) => {
+            display_analysis(file, &analysis, format, cli.verbose)?;
+
+            // Analysis completed successfully - exit 0 regardless of exclusion decision
+            // The exclusion recommendation is communicated through the output content
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("❌ Analysis failed: {}", e);
+            std::process::exit(2);
+        }
+    }
+}
+
+fn display_analysis(
+    file: &Path,
+    analysis: &ExclusionAnalysis,
+    format: &str,
+    verbose: bool,
+) -> Result<()> {
+    match format.to_lowercase().as_str() {
+        "json" => {
+            let json = serde_json::to_string_pretty(analysis)
+                .context("Failed to serialize analysis to JSON")?;
+            println!("{}", json);
+        }
+        "text" => {
+            display_text_format(file, analysis, verbose);
+        }
+        _ => {
+            // Default to text format for unknown format types
+            display_text_format(file, analysis, verbose);
+        }
+    }
+
+    Ok(())
+}
+
+fn display_text_format(file: &Path, analysis: &ExclusionAnalysis, verbose: bool) {
+    println!("📁 File Analysis: {}", file.display());
+    println!("{}", "═".repeat(60));
+
+    println!("📋 File Type: {}", analysis.file_type);
+    println!("🎯 Purpose: {}", analysis.purpose);
+    println!();
+
+    println!("🚫 Exclusion Recommendations:");
+    println!(
+        "  • General Processing: {}",
+        if analysis.should_exclude_general {
+            "❌ EXCLUDE"
+        } else {
+            "✅ INCLUDE"
+        }
+    );
+    println!(
+        "  • Linting: {}",
+        if analysis.should_exclude_lint {
+            "❌ EXCLUDE"
+        } else {
+            "✅ INCLUDE"
+        }
+    );
+    println!(
+        "  • Testing: {}",
+        if analysis.should_exclude_test {
+            "❌ EXCLUDE"
+        } else {
+            "✅ INCLUDE"
+        }
+    );
+    println!();
+
+    println!("🤔 Reasoning:");
+    println!("{}", analysis.reasoning);
+    println!();
+
+    println!("💡 Configuration Recommendation:");
+    println!("{}", analysis.exclusion_recommendation);
+
+    if verbose {
+        println!();
+        println!("🔧 Debug Information:");
+        println!("  • Analysis completed successfully");
+        println!("  • File exists and is readable");
     }
 }
 

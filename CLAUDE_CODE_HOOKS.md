@@ -1,10 +1,10 @@
 # Claude Code Hooks Integration
 
-This document explains how to integrate **claude-python-guardrails** with Claude Code hooks for automatic linting and testing.
+This document explains how to integrate **claude-python-guardrails** with Claude Code hooks for automatic linting, testing, and AI-powered file analysis.
 
 ## 🚀 Quick Setup
 
-Replace your existing generic smart-lint/smart-test hooks with our Python-optimized automation system.
+Replace your existing generic smart-lint/smart-test hooks with our AI-powered Python-optimized automation system.
 
 ### 1. Install the Binary
 
@@ -56,6 +56,58 @@ Hooks are loaded at startup, so restart Claude Code to activate the new configur
 1. Run `/hooks` in Claude Code to see registered hooks
 2. Edit a Python file to trigger automatic linting/testing
 3. Check for success messages: "👉 Lints pass. Continue with your task."
+
+## 🤖 AI-Powered Analysis Setup
+
+For intelligent file analysis using Cerebras AI, add your API key:
+
+```bash
+# Add to your shell profile (~/.bashrc, ~/.zshrc, etc.)
+export CEREBRAS_API_KEY="your-api-key-here"
+
+# Or add to Claude Code project settings
+echo 'export CEREBRAS_API_KEY="your-api-key-here"' >> .env
+```
+
+### AI Analysis Hook Configuration
+
+Add AI-powered exclusion checking to your hooks:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-python-guardrails analyze --format json",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "claude-python-guardrails smart-lint",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "claude-python-guardrails smart-test",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### What This Provides
+
+- **Intelligent exclusion analysis**: AI determines if files need linting/testing based on purpose
+- **Conservative fallback**: When API is unavailable, assumes full processing needed
+- **Smart recommendations**: Get actionable advice on configuration patterns
+- **Context awareness**: Different analysis for linting vs testing scenarios
 
 ## 📋 Configuration Options
 

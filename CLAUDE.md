@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Core Architecture
 
-**Claude Python Guardrails** is a Rust CLI tool for intelligent file exclusion in Python projects, with a two-layer architecture:
+**Claude Python Guardrails** is a Rust CLI tool for intelligent file exclusion in Python projects, with AI-powered analysis using Cerebras LLM. Features a two-layer architecture:
 
 ### Main Components
-- `src/main.rs` - CLI interface using clap with 5 commands: `check`, `lint`, `test`, `init`, `validate`
+- `src/main.rs` - CLI interface using clap with 6 commands: `check`, `lint`, `test`, `init`, `validate`, `analyze`
 - `src/lib.rs` - Core logic with `GuardrailsChecker` struct that compiles glob patterns using `globset` crate
+- `src/cerebras.rs` - AI-powered analysis using Cerebras LLM API for intelligent exclusion recommendations
 - Configuration system using serde + serde_yaml for YAML parsing
 
 ### Key Data Structures
@@ -16,6 +17,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `ExclusionConfig` - Global patterns + Python-specific exclusions
 - `PythonExclusions` - Context-aware patterns (lint_skip, test_skip)
 - `GuardrailsChecker` - Main processor that pre-compiles glob patterns for performance
+- `CerebrasConfig` - Configuration for Cerebras API integration (API key, model, endpoint)
+- `SmartExclusionAnalyzer` - AI-powered analyzer using Cerebras LLM
+- `ExclusionAnalysis` - Structured output with exclusion recommendations and reasoning
 
 ### Exclusion Contexts
 The tool supports **context-aware exclusions**:
@@ -24,6 +28,37 @@ The tool supports **context-aware exclusions**:
 - **Test** (`test`) - File excluded only from testing
 
 Global patterns apply to all contexts; Python-specific patterns only apply to their respective contexts.
+
+## AI-Powered Analysis
+
+### Cerebras Integration
+The tool includes optional Cerebras LLM integration for intelligent file analysis that goes beyond pattern matching:
+
+- **File purpose detection**: Understands if files contain business logic, type definitions, configs, or generated code
+- **Context-aware recommendations**: Different analysis for linting vs testing vs general processing
+- **Smart reasoning**: Provides clear explanations for exclusion decisions
+- **Conservative fallback**: When API fails, assumes files need full processing (safe default)
+
+### Environment Variables
+- `CEREBRAS_API_KEY` - Required for AI analysis functionality
+- `RUST_LOG` - Controls logging level (debug, info, warn, error)
+
+### Analysis Modes
+1. **AI-powered** (with `CEREBRAS_API_KEY`): Uses Cerebras LLM for intelligent analysis
+2. **Heuristic** (no API key): Falls back to pattern-based rules  
+3. **Conservative** (API failure): Assumes all files need processing
+
+### Usage
+```bash
+# Set API key
+export CEREBRAS_API_KEY="your-api-key-here"
+
+# Analyze file with AI
+./target/release/claude-python-guardrails analyze src/models.py
+
+# Get JSON output for programmatic use  
+./target/release/claude-python-guardrails analyze src/config.py --format json
+```
 
 ## Development Commands
 
@@ -45,6 +80,7 @@ cargo test --test integration_test
 ./target/release/claude-python-guardrails --help
 ./target/release/claude-python-guardrails init
 ./target/release/claude-python-guardrails check src/main.py
+./target/release/claude-python-guardrails analyze src/main.py --format json
 ```
 
 ### Individual Commands
@@ -102,6 +138,9 @@ The `GuardrailsChecker` pre-compiles all patterns into `GlobSet` objects for fas
 - **serde/serde_yaml** - Configuration deserialization
 - **anyhow** - Error handling with context
 - **tempfile** - Testing with temporary directories
+- **reqwest** - HTTP client for Cerebras API calls
+- **tokio** - Async runtime for API requests
+- **uuid** - Unique identifiers for API requests
 
 ## CI/CD Integration
 
