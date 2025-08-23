@@ -776,7 +776,7 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
 
         let response = self
             .client
-            .post(&format!("{}/chat/completions", self.config.base_url))
+            .post(format!("{}/chat/completions", self.config.base_url))
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .header("Content-Type", "application/json")
             .json(&request)
@@ -858,7 +858,7 @@ Be DIRECTIVE and use CLEAR language. If unsure, err on the side of INCLUDING fil
 
         let response = self
             .client
-            .post(&format!("{}/chat/completions", self.config.base_url))
+            .post(format!("{}/chat/completions", self.config.base_url))
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .header("Content-Type", "application/json")
             .json(&request)

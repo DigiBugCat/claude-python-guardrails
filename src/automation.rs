@@ -334,7 +334,7 @@ impl AutomationRunner {
         let test_file_str = test_file.to_string_lossy();
 
         // Build combined args by collecting base args and adding the test file
-        let mut combined_args: Vec<&str> = base_args.iter().copied().collect();
+        let mut combined_args: Vec<&str> = base_args.to_vec();
         combined_args.push(&test_file_str);
 
         let output = self.run_command_with_timeout(
@@ -387,7 +387,7 @@ impl AutomationRunner {
                             for missing_test in &analysis.missing_tests {
                                 message.push_str(&format!("  • {}\n", missing_test));
                             }
-                            message.push_str("\n");
+                            message.push('\n');
                         }
 
                         if !analysis.recommendations.is_empty() {
@@ -441,7 +441,7 @@ impl AutomationRunner {
                                 test.suggested_fix
                             ));
                         }
-                        detailed_message.push_str("\n");
+                        detailed_message.push('\n');
                     }
 
                     if !analysis.coverage_analysis.is_empty() {
@@ -456,7 +456,7 @@ impl AutomationRunner {
                         for missing_test in &analysis.missing_tests {
                             detailed_message.push_str(&format!("  • {}\n", missing_test));
                         }
-                        detailed_message.push_str("\n");
+                        detailed_message.push('\n');
                     }
 
                     detailed_message.push_str(&format!(
@@ -464,7 +464,7 @@ impl AutomationRunner {
                         analysis.recommendations
                     ));
                     detailed_message.push_str("📄 **Full Output**:\n");
-                    detailed_message.push_str(&combined_output.trim());
+                    detailed_message.push_str(combined_output.trim());
                     detailed_message.push_str(&format!(
                         "\n\nRun 'cd {} && {}' to retry",
                         project.root.display(),
