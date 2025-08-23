@@ -140,7 +140,11 @@ jobs:
 
     - name: Generate SHA256
       run: |
-        sha256sum ${{ steps.binary-name.outputs.name }} > ${{ steps.binary-name.outputs.name }}.sha256
+        if [[ "$RUNNER_OS" == "Linux" ]]; then
+          sha256sum ${{ steps.binary-name.outputs.name }} > ${{ steps.binary-name.outputs.name }}.sha256
+        else
+          shasum -a 256 ${{ steps.binary-name.outputs.name }} > ${{ steps.binary-name.outputs.name }}.sha256
+        fi
 
     - name: Upload binary and checksum to release
       run: |
