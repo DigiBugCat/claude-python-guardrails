@@ -78,14 +78,49 @@ claude-python-guardrails smart-test
 
 ### Installation
 
+#### Option 1: Install from Source (Recommended)
+
 ```bash
-# Clone and build
+# Clone and install system-wide
+git clone https://github.com/DigiBugCat/claude-python-guardrails
+cd claude-python-guardrails
+cargo install --path .
+```
+
+This installs the binary to `~/.cargo/bin/claude-python-guardrails`.
+
+#### Option 2: Manual Build
+
+```bash
+# Clone and build locally
 git clone https://github.com/DigiBugCat/claude-python-guardrails
 cd claude-python-guardrails
 cargo build --release
 
-# Or install directly from source
-cargo install --path .
+# Binary will be at: ./target/release/claude-python-guardrails
+```
+
+#### macOS PATH Setup
+
+If `claude-python-guardrails` command is not found after installation:
+
+```bash
+# Add Cargo bin directory to your PATH
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# Or for bash users
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bash_profile
+source ~/.bash_profile
+```
+
+#### Verify Installation
+
+```bash
+# Check if installed correctly
+claude-python-guardrails --version
+
+# Should output: claude-python-guardrails 0.2.0
 ```
 
 ### File Exclusion Usage
