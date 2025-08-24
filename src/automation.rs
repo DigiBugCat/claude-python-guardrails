@@ -315,11 +315,12 @@ impl AutomationRunner {
                             if !analysis.reasoning.trim().is_empty() {
                                 detailed_message.push_str("💡 **Analysis:**\n");
                                 detailed_message.push_str(&analysis.reasoning);
-                                
+
                                 // Check if linter might be overzealous
-                                if analysis.reasoning.contains("style") 
+                                if analysis.reasoning.contains("style")
                                     || analysis.reasoning.contains("convention")
-                                    || analysis.reasoning.contains("optional") {
+                                    || analysis.reasoning.contains("optional")
+                                {
                                     detailed_message.push_str("\n\n🤔 **Note:** Some of these might be style preferences rather than real issues.");
                                 }
                             }
@@ -494,11 +495,10 @@ impl AutomationRunner {
 
                     detailed_message.push_str("📄 **Full Output**:\n");
                     detailed_message.push_str(combined_output.trim());
-                    
-                    // Add the blocking message 
-                    detailed_message.push_str(
-                        "\n\n⛔ Must fix all test failures before continuing"
-                    );
+
+                    // Add the blocking message
+                    detailed_message
+                        .push_str("\n\n⛔ Must fix all test failures before continuing");
 
                     Ok(AutomationResult::Failure(detailed_message))
                 }
@@ -517,7 +517,7 @@ impl AutomationRunner {
                     )))
                 } else {
                     Ok(AutomationResult::Failure(
-                        "⛔ Test failures detected. Must fix before continuing".to_string()
+                        "⛔ Test failures detected. Must fix before continuing".to_string(),
                     ))
                 }
             }
