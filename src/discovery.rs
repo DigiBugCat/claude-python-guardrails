@@ -10,6 +10,13 @@ pub enum PythonLinter {
     Pylint,
 }
 
+/// Represents different Python code formatters
+#[derive(Debug, Clone, PartialEq)]
+pub enum PythonFormatter {
+    Black,
+    Ruff, // Ruff can also format
+}
+
 /// Represents different Python tools available for testing
 #[derive(Debug, Clone, PartialEq)]
 pub enum PythonTester {
@@ -25,6 +32,7 @@ pub struct PythonProject {
     pub project_type: ProjectType,
     pub available_linters: Vec<PythonLinter>,
     pub available_testers: Vec<PythonTester>,
+    pub available_formatters: Vec<PythonFormatter>,
 }
 
 /// Type of Python project detected
@@ -46,12 +54,14 @@ impl PythonProject {
         let project_type = Self::detect_project_type(&project_root);
         let available_linters = Self::detect_available_linters();
         let available_testers = Self::detect_available_testers();
+        let available_formatters = Self::detect_available_formatters();
 
         Ok(Self {
             root: project_root,
             project_type,
             available_linters,
             available_testers,
+            available_formatters,
         })
     }
 
@@ -177,6 +187,21 @@ impl PythonProject {
         linters
     }
 
+    /// Detect available Python formatting tools
+    fn detect_available_formatters() -> Vec<PythonFormatter> {
+        let mut formatters = Vec::new();
+
+        // Prioritize Black first, then Ruff formatter
+        if which("black").is_ok() {
+            formatters.push(PythonFormatter::Black);
+        }
+        if which("ruff").is_ok() {
+            formatters.push(PythonFormatter::Ruff);
+        }
+
+        formatters
+    }
+
     /// Detect available Python testing tools
     fn detect_available_testers() -> Vec<PythonTester> {
         let mut testers = Vec::new();
@@ -201,6 +226,11 @@ impl PythonProject {
     /// Get the preferred tester (first available in priority order)
     pub fn preferred_tester(&self) -> Option<&PythonTester> {
         self.available_testers.first()
+    }
+
+    /// Get the preferred formatter (first available in priority order)
+    pub fn preferred_formatter(&self) -> Option<&PythonFormatter> {
+        self.available_formatters.first()
     }
 
     /// Check if the project has any linting tools available
@@ -230,6 +260,33 @@ impl PythonLinter {
             PythonLinter::Ruff => vec!["check", "."],
             PythonLinter::Flake8 => vec!["."],
             PythonLinter::Pylint => vec!["."],
+        }
+    }
+
+    /// Get the arguments to run this linter with auto-fix on a specific file
+    pub fn fix_args(&self, file_path: &str) -> Vec<String> {
+        match self {
+            PythonLinter::Ruff => vec!["check".to_string(), "--fix".to_string(), file_path.to_string()],
+            PythonLinter::Flake8 => vec![], // Flake8 doesn't support auto-fix
+            PythonLinter::Pylint => vec![], // Pylint doesn't support auto-fix
+        }
+    }
+
+    /// Check if this linter supports auto-fixing
+    pub fn supports_autofix(&self) -> bool {
+        match self {
+            PythonLinter::Ruff => true,
+            PythonLinter::Flake8 => false,
+            PythonLinter::Pylint => false,
+        }
+    }
+
+    /// Get the arguments to run this linter on a specific file
+    pub fn file_args(&self, file_path: &str) -> Vec<String> {
+        match self {
+            PythonLinter::Ruff => vec!["check".to_string(), file_path.to_string()],
+            PythonLinter::Flake8 => vec![file_path.to_string()],
+            PythonLinter::Pylint => vec![file_path.to_string()],
         }
     }
 
@@ -268,6 +325,32 @@ impl PythonTester {
             PythonTester::Pytest => "pytest",
             PythonTester::PytestModule => "python -m pytest",
             PythonTester::Unittest => "python -m unittest discover",
+        }
+    }
+}
+
+impl PythonFormatter {
+    /// Get the command to run this formatter
+    pub fn command(&self) -> &'static str {
+        match self {
+            PythonFormatter::Black => "black",
+            PythonFormatter::Ruff => "ruff",
+        }
+    }
+
+    /// Get the arguments to format a specific file
+    pub fn format_args(&self, file_path: &str) -> Vec<String> {
+        match self {
+            PythonFormatter::Black => vec![file_path.to_string()],
+            PythonFormatter::Ruff => vec!["format".to_string(), file_path.to_string()],
+        }
+    }
+
+    /// Get the human-readable name for messages
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            PythonFormatter::Black => "black",
+            PythonFormatter::Ruff => "ruff format",
         }
     }
 }
