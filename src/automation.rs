@@ -644,10 +644,7 @@ impl AutomationRunner {
     }
 
     /// Recursively search for test files matching the given patterns in a directory tree
-    fn find_test_file_recursive(
-        dir: &Path,
-        patterns: &[String],
-    ) -> Option<std::path::PathBuf> {
+    fn find_test_file_recursive(dir: &Path, patterns: &[String]) -> Option<std::path::PathBuf> {
         if !dir.exists() || !dir.is_dir() {
             return None;
         }
