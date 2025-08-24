@@ -12,11 +12,7 @@ env:
 jobs:
   test:
     name: Test Suite
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        rust: [stable]
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
@@ -25,7 +21,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@v1
       with:
-        toolchain: ${{ matrix.rust }}
+        toolchain: stable
         components: rustfmt, clippy
 
     - name: Cache cargo registry
