@@ -211,22 +211,67 @@ impl AutomationRunner {
         }
 
         log::debug!(
-            "Running {} in {}",
+            "Running {} on file: {}",
             linter.display_name(),
-            project.root.display()
+            source_file.display()
         );
 
+        let file_path_str = source_file.to_string_lossy();
+
+        // Step 1: Try formatting first (if formatter available)
+        if let Some(formatter) = project.preferred_formatter() {
+            log::debug!("Formatting file with {}", formatter.display_name());
+            let format_args = formatter.format_args(&file_path_str);
+            let format_args_str: Vec<&str> = format_args.iter().map(|s| s.as_str()).collect();
+            
+            let _format_output = self.run_command_with_timeout(
+                formatter.command(),
+                &format_args_str,
+                &project.root,
+                self.config.lint_timeout_seconds,
+            )?;
+            // Don't fail on format errors - just log and continue
+            log::debug!("Formatting completed, now checking for lint issues");
+        }
+
+        // Step 2: Try auto-fix linting issues (if supported)
+        if linter.supports_autofix() {
+            log::debug!("Attempting auto-fix with {}", linter.command());
+            let fix_args = linter.fix_args(&file_path_str);
+            let fix_args_str: Vec<&str> = fix_args.iter().map(|s| s.as_str()).collect();
+            
+            let _fix_output = self.run_command_with_timeout(
+                linter.command(),
+                &fix_args_str,
+                &project.root,
+                self.config.lint_timeout_seconds,
+            )?;
+            // Don't fail on fix errors - just log and continue to check
+            log::debug!("Auto-fix completed, now checking for remaining issues");
+        }
+
+        // Step 3: Run linter on the specific file to check remaining issues
+        let file_args = linter.file_args(&file_path_str);
+        let file_args_str: Vec<&str> = file_args.iter().map(|s| s.as_str()).collect();
+        
         let output = self.run_command_with_timeout(
             linter.command(),
-            &linter.args(),
+            &file_args_str,
             &project.root,
             self.config.lint_timeout_seconds,
         )?;
 
         if output.success {
-            Ok(AutomationResult::Success(
-                "👉 Lints pass. Continue with your task.".to_string(),
-            ))
+            let has_formatter = project.preferred_formatter().is_some();
+            let has_autofix = linter.supports_autofix();
+            
+            let message = match (has_formatter, has_autofix) {
+                (true, true) => "✨ Formatted, auto-fixed, and verified. Continue with your task.".to_string(),
+                (true, false) => "✨ Formatted and lints verified. Continue with your task.".to_string(),
+                (false, true) => "✨ Auto-fixed lint issues and verified. Continue with your task.".to_string(),
+                (false, false) => "👉 Lints pass. Continue with your task.".to_string(),
+            };
+            Ok(AutomationResult::Success(message))
         } else {
             // Use AI analysis for comprehensive lint failure analysis
             let combined_output = if !output.stderr.is_empty() {
