@@ -630,7 +630,7 @@ impl AutomationRunner {
 
         // Search recursively in test directories
         for base_dir in &base_test_directories {
-            if let Some(test_file) = self.find_test_file_recursive(base_dir, &test_patterns) {
+            if let Some(test_file) = Self::find_test_file_recursive(base_dir, &test_patterns) {
                 log::debug!("Found test file: {}", test_file.display());
                 return Some(test_file);
             }
@@ -645,7 +645,6 @@ impl AutomationRunner {
 
     /// Recursively search for test files matching the given patterns in a directory tree
     fn find_test_file_recursive(
-        &self,
         dir: &Path,
         patterns: &[String],
     ) -> Option<std::path::PathBuf> {
@@ -678,7 +677,7 @@ impl AutomationRunner {
                     }
 
                     // Recursively search the subdirectory
-                    if let Some(test_file) = self.find_test_file_recursive(&path, patterns) {
+                    if let Some(test_file) = Self::find_test_file_recursive(&path, patterns) {
                         return Some(test_file);
                     }
                 }
