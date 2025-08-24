@@ -434,64 +434,25 @@ impl AutomationRunner {
         {
             Ok(analysis) => {
                 if output.success {
-                    // Tests passed - check for coverage gaps and improvements
+                    // Tests passed - keep it simple
                     let mut message = String::new();
+                    message.push_str("✅ Tests pass!\n\n");
 
-                    // Check if there are important missing tests or coverage gaps
-                    let has_suggestions = !analysis.missing_tests.is_empty()
-                        || analysis.coverage_analysis.contains("missing")
-                        || analysis.coverage_analysis.contains("gap")
-                        || analysis.quality_assessment.contains("improve")
-                        || analysis.recommendations.contains("add")
-                        || analysis.recommendations.contains("consider");
-
-                    if has_suggestions {
-                        message.push_str("✅ Tests pass, but coverage gaps detected:\n\n");
-
-                        if !analysis.coverage_analysis.is_empty() {
-                            message.push_str(&format!(
-                                "📋 **Coverage Analysis**: {}\n\n",
-                                analysis.coverage_analysis
-                            ));
-                        }
-
-                        if !analysis.missing_tests.is_empty() {
-                            message.push_str("➕ **Recommended Additional Tests**:\n");
-                            for missing_test in &analysis.missing_tests {
-                                message.push_str(&format!("  • {}\n", missing_test));
-                            }
-                            message.push('\n');
-                        }
-
-                        if !analysis.recommendations.is_empty() {
-                            message.push_str(&format!(
-                                "💡 **Suggestions**: {}\n\n",
-                                analysis.recommendations
-                            ));
-                        }
-
-                        message.push_str(
-                            "👉 Continue with your task, but consider adding these tests.",
-                        );
-                    } else {
-                        message.push_str("✅ Tests pass with excellent coverage!\n\n");
-
-                        if !analysis.coverage_analysis.is_empty() {
-                            message.push_str(&format!(
-                                "📋 **Coverage**: {}\n",
-                                analysis.coverage_analysis
-                            ));
-                        }
-
-                        if !analysis.quality_assessment.is_empty() {
-                            message.push_str(&format!(
-                                "🎯 **Quality**: {}\n\n",
-                                analysis.quality_assessment
-                            ));
-                        }
-
-                        message.push_str("👉 Continue with your task.");
+                    if !analysis.coverage_analysis.is_empty() {
+                        message.push_str(&format!(
+                            "📋 **Coverage**: {}\n",
+                            analysis.coverage_analysis
+                        ));
                     }
+
+                    if !analysis.quality_assessment.is_empty() {
+                        message.push_str(&format!(
+                            "🎯 **Quality**: {}\n\n",
+                            analysis.quality_assessment
+                        ));
+                    }
+
+                    message.push_str("👉 Continue with your task.");
 
                     Ok(AutomationResult::Success(message))
                 } else {
@@ -524,18 +485,6 @@ impl AutomationRunner {
                         ));
                     }
 
-                    if !analysis.missing_tests.is_empty() {
-                        detailed_message.push_str("➕ **Consider Adding**:\n");
-                        for missing_test in &analysis.missing_tests {
-                            detailed_message.push_str(&format!("  • {}\n", missing_test));
-                        }
-                        detailed_message.push('\n');
-                    }
-
-                    detailed_message.push_str(&format!(
-                        "🛠️  **Next Steps**: {}\n\n",
-                        analysis.recommendations
-                    ));
                     detailed_message.push_str("📄 **Full Output**:\n");
                     detailed_message.push_str(combined_output.trim());
                     
