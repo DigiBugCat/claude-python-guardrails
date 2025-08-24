@@ -428,9 +428,18 @@ impl AutomationRunner {
         {
             Ok(analysis) => {
                 if output.success {
-                    // Tests passed - keep it simple
+                    // Tests passed - check for edge case coverage
                     let mut message = String::new();
                     message.push_str("✅ Tests pass!\n\n");
+
+                    // Check if edge cases are missing
+                    let missing_edge_cases = analysis.coverage_analysis.contains("edge case")
+                        || analysis.coverage_analysis.contains("error handling")
+                        || analysis.coverage_analysis.contains("boundary")
+                        || analysis.coverage_analysis.contains("exception")
+                        || analysis.quality_assessment.contains("edge case")
+                        || analysis.quality_assessment.contains("error handling")
+                        || analysis.quality_assessment.contains("failure");
 
                     if !analysis.coverage_analysis.is_empty() {
                         message.push_str(&format!(
@@ -444,6 +453,10 @@ impl AutomationRunner {
                             "🎯 **Quality**: {}\n\n",
                             analysis.quality_assessment
                         ));
+                    }
+
+                    if missing_edge_cases {
+                        message.push_str("⚠️ **STRONGLY CONSIDER**: Implement the missing edge cases and error handling tests mentioned above. Robust code requires comprehensive test coverage including failure scenarios.\n\n");
                     }
 
                     message.push_str("👉 Continue with your task.");
