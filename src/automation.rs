@@ -130,8 +130,8 @@ impl AutomationRunner {
                 None => return Ok(AutomationResult::Skipped),
             };
 
-        // Find and run linter
-        self.run_lint_command(&project).await
+        // Find and run linter for the specific file
+        self.run_lint_command(&project, &file_path).await
     }
 
     /// Handle smart-test command from Claude Code hook
@@ -194,8 +194,8 @@ impl AutomationRunner {
         self.run_test_command(&project, &file_path).await
     }
 
-    /// Run linting command for the project
-    async fn run_lint_command(&self, project: &PythonProject) -> Result<AutomationResult> {
+    /// Run linting command for a specific file in the project
+    async fn run_lint_command(&self, project: &PythonProject, source_file: &Path) -> Result<AutomationResult> {
         let linter = match project.preferred_linter() {
             Some(linter) => linter,
             None => {
@@ -203,6 +203,12 @@ impl AutomationRunner {
                 return Ok(AutomationResult::NoAction);
             }
         };
+
+        // Only lint Python files (.py extension)
+        if source_file.extension().and_then(|ext| ext.to_str()) != Some("py") {
+            log::debug!("Skipping linting for non-Python file: {}", source_file.display());
+            return Ok(AutomationResult::NoAction);
+        }
 
         log::debug!(
             "Running {} in {}",
@@ -308,6 +314,12 @@ impl AutomationRunner {
                 return Ok(AutomationResult::NoAction);
             }
         };
+
+        // Only test Python files (.py extension)
+        if source_file.extension().and_then(|ext| ext.to_str()) != Some("py") {
+            log::debug!("Skipping tests for non-Python file: {}", source_file.display());
+            return Ok(AutomationResult::NoAction);
+        }
 
         // Find the corresponding test file for the edited source file
         let test_file = match self.find_test_file_for_source(source_file, &project.root) {
