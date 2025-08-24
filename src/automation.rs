@@ -130,8 +130,8 @@ impl AutomationRunner {
                 None => return Ok(AutomationResult::Skipped),
             };
 
-        // Find and run linter
-        self.run_lint_command(&project).await
+        // Find and run linter for the specific file
+        self.run_lint_command(&project, &file_path).await
     }
 
     /// Handle smart-test command from Claude Code hook
@@ -194,8 +194,12 @@ impl AutomationRunner {
         self.run_test_command(&project, &file_path).await
     }
 
-    /// Run linting command for the project
-    async fn run_lint_command(&self, project: &PythonProject) -> Result<AutomationResult> {
+    /// Run linting command for a specific file in the project
+    async fn run_lint_command(
+        &self,
+        project: &PythonProject,
+        source_file: &Path,
+    ) -> Result<AutomationResult> {
         let linter = match project.preferred_linter() {
             Some(linter) => linter,
             None => {
@@ -204,23 +208,83 @@ impl AutomationRunner {
             }
         };
 
+        // Only lint Python files (.py extension)
+        if source_file.extension().and_then(|ext| ext.to_str()) != Some("py") {
+            log::debug!(
+                "Skipping linting for non-Python file: {}",
+                source_file.display()
+            );
+            return Ok(AutomationResult::NoAction);
+        }
+
         log::debug!(
-            "Running {} in {}",
+            "Running {} on file: {}",
             linter.display_name(),
-            project.root.display()
+            source_file.display()
         );
+
+        let file_path_str = source_file.to_string_lossy();
+
+        // Step 1: Try formatting first (if formatter available)
+        if let Some(formatter) = project.preferred_formatter() {
+            log::debug!("Formatting file with {}", formatter.display_name());
+            let format_args = formatter.format_args(&file_path_str);
+            let format_args_str: Vec<&str> = format_args.iter().map(|s| s.as_str()).collect();
+
+            let _format_output = self.run_command_with_timeout(
+                formatter.command(),
+                &format_args_str,
+                &project.root,
+                self.config.lint_timeout_seconds,
+            )?;
+            // Don't fail on format errors - just log and continue
+            log::debug!("Formatting completed, now checking for lint issues");
+        }
+
+        // Step 2: Try auto-fix linting issues (if supported)
+        if linter.supports_autofix() {
+            log::debug!("Attempting auto-fix with {}", linter.command());
+            let fix_args = linter.fix_args(&file_path_str);
+            let fix_args_str: Vec<&str> = fix_args.iter().map(|s| s.as_str()).collect();
+
+            let _fix_output = self.run_command_with_timeout(
+                linter.command(),
+                &fix_args_str,
+                &project.root,
+                self.config.lint_timeout_seconds,
+            )?;
+            // Don't fail on fix errors - just log and continue to check
+            log::debug!("Auto-fix completed, now checking for remaining issues");
+        }
+
+        // Step 3: Run linter on the specific file to check remaining issues
+        let file_args = linter.file_args(&file_path_str);
+        let file_args_str: Vec<&str> = file_args.iter().map(|s| s.as_str()).collect();
 
         let output = self.run_command_with_timeout(
             linter.command(),
-            &linter.args(),
+            &file_args_str,
             &project.root,
             self.config.lint_timeout_seconds,
         )?;
 
         if output.success {
-            Ok(AutomationResult::Success(
-                "👉 Lints pass. Continue with your task.".to_string(),
-            ))
+            let has_formatter = project.preferred_formatter().is_some();
+            let has_autofix = linter.supports_autofix();
+
+            let message = match (has_formatter, has_autofix) {
+                (true, true) => {
+                    "✨ Formatted, auto-fixed, and verified. Continue with your task.".to_string()
+                }
+                (true, false) => {
+                    "✨ Formatted and lints verified. Continue with your task.".to_string()
+                }
+                (false, true) => {
+                    "✨ Auto-fixed lint issues and verified. Continue with your task.".to_string()
+                }
+                (false, false) => "👉 Lints pass. Continue with your task.".to_string(),
+            };
+            Ok(AutomationResult::Success(message))
         } else {
             // Use AI analysis for comprehensive lint failure analysis
             let combined_output = if !output.stderr.is_empty() {
@@ -247,23 +311,24 @@ impl AutomationRunner {
                                 detailed_message.push_str("\n\n");
                             }
 
-                            // Add AI reasoning
+                            // Add AI reasoning about whether linter is being overzealous
                             if !analysis.reasoning.trim().is_empty() {
                                 detailed_message.push_str("💡 **Analysis:**\n");
                                 detailed_message.push_str(&analysis.reasoning);
-                                detailed_message.push_str("\n\n");
-                            }
 
-                            detailed_message.push_str(&format!(
-                                "📝 **Fix Command:** Run 'cd {} && {}' to address these issues",
-                                project.root.display(),
-                                linter.display_name()
-                            ));
+                                // Check if linter might be overzealous
+                                if analysis.reasoning.contains("style")
+                                    || analysis.reasoning.contains("convention")
+                                    || analysis.reasoning.contains("optional")
+                                {
+                                    detailed_message.push_str("\n\n🤔 **Note:** Some of these might be style preferences rather than real issues.");
+                                }
+                            }
                         } else {
                             detailed_message.push_str("✅ **AI Analysis Result:**\n");
                             detailed_message.push_str(&analysis.reasoning);
                             detailed_message.push_str(
-                                "\n\n👉 No real issues found. You can continue with your task.",
+                                "\n\n👉 Linter appears overzealous. You can continue with your task.",
                             );
 
                             // Return success if no real issues found
@@ -276,19 +341,13 @@ impl AutomationRunner {
                         log::warn!("AI analysis failed: {}", e);
                         // Fallback to showing raw output
                         format!(
-                            "⛔ LINT FAILURES:\n\n{}\n\nRun 'cd {} && {}' to fix these issues",
-                            combined_output.trim(),
-                            project.root.display(),
-                            linter.display_name()
+                            "⛔ LINT FAILURES:\n\n{}\n\n⚠️ Could not determine if linter is being overzealous (AI unavailable)",
+                            combined_output.trim()
                         )
                     }
                 }
             } else {
-                format!(
-                    "⛔ BLOCKING: Run 'cd {} && {}' to fix lint failures",
-                    project.root.display(),
-                    linter.display_name()
-                )
+                "⛔ Lint check failed".to_string()
             };
 
             Ok(AutomationResult::Failure(message))
@@ -308,6 +367,15 @@ impl AutomationRunner {
                 return Ok(AutomationResult::NoAction);
             }
         };
+
+        // Only test Python files (.py extension)
+        if source_file.extension().and_then(|ext| ext.to_str()) != Some("py") {
+            log::debug!(
+                "Skipping tests for non-Python file: {}",
+                source_file.display()
+            );
+            return Ok(AutomationResult::NoAction);
+        }
 
         // Find the corresponding test file for the edited source file
         let test_file = match self.find_test_file_for_source(source_file, &project.root) {
@@ -351,7 +419,7 @@ impl AutomationRunner {
             output.stdout
         };
 
-        // Always run AI analysis regardless of test success/failure
+        // Now that tests have been run, analyze the output with AI
         // We already have the source file as a parameter, no need to search for it
 
         match self
@@ -361,64 +429,38 @@ impl AutomationRunner {
         {
             Ok(analysis) => {
                 if output.success {
-                    // Tests passed - check for coverage gaps and improvements
+                    // Tests passed - check for edge case coverage
                     let mut message = String::new();
+                    message.push_str("✅ Tests pass!\n\n");
 
-                    // Check if there are important missing tests or coverage gaps
-                    let has_suggestions = !analysis.missing_tests.is_empty()
-                        || analysis.coverage_analysis.contains("missing")
-                        || analysis.coverage_analysis.contains("gap")
-                        || analysis.quality_assessment.contains("improve")
-                        || analysis.recommendations.contains("add")
-                        || analysis.recommendations.contains("consider");
+                    // Check if edge cases are missing
+                    let missing_edge_cases = analysis.coverage_analysis.contains("edge case")
+                        || analysis.coverage_analysis.contains("error handling")
+                        || analysis.coverage_analysis.contains("boundary")
+                        || analysis.coverage_analysis.contains("exception")
+                        || analysis.quality_assessment.contains("edge case")
+                        || analysis.quality_assessment.contains("error handling")
+                        || analysis.quality_assessment.contains("failure");
 
-                    if has_suggestions {
-                        message.push_str("✅ Tests pass, but coverage gaps detected:\n\n");
-
-                        if !analysis.coverage_analysis.is_empty() {
-                            message.push_str(&format!(
-                                "📋 **Coverage Analysis**: {}\n\n",
-                                analysis.coverage_analysis
-                            ));
-                        }
-
-                        if !analysis.missing_tests.is_empty() {
-                            message.push_str("➕ **Recommended Additional Tests**:\n");
-                            for missing_test in &analysis.missing_tests {
-                                message.push_str(&format!("  • {}\n", missing_test));
-                            }
-                            message.push('\n');
-                        }
-
-                        if !analysis.recommendations.is_empty() {
-                            message.push_str(&format!(
-                                "💡 **Suggestions**: {}\n\n",
-                                analysis.recommendations
-                            ));
-                        }
-
-                        message.push_str(
-                            "👉 Continue with your task, but consider adding these tests.",
-                        );
-                    } else {
-                        message.push_str("✅ Tests pass with excellent coverage!\n\n");
-
-                        if !analysis.coverage_analysis.is_empty() {
-                            message.push_str(&format!(
-                                "📋 **Coverage**: {}\n",
-                                analysis.coverage_analysis
-                            ));
-                        }
-
-                        if !analysis.quality_assessment.is_empty() {
-                            message.push_str(&format!(
-                                "🎯 **Quality**: {}\n\n",
-                                analysis.quality_assessment
-                            ));
-                        }
-
-                        message.push_str("👉 Continue with your task.");
+                    if !analysis.coverage_analysis.is_empty() {
+                        message.push_str(&format!(
+                            "📋 **Coverage**: {}\n",
+                            analysis.coverage_analysis
+                        ));
                     }
+
+                    if !analysis.quality_assessment.is_empty() {
+                        message.push_str(&format!(
+                            "🎯 **Quality**: {}\n\n",
+                            analysis.quality_assessment
+                        ));
+                    }
+
+                    if missing_edge_cases {
+                        message.push_str("⚠️ **STRONGLY CONSIDER**: Implement the missing edge cases and error handling tests mentioned above. Robust code requires comprehensive test coverage including failure scenarios.\n\n");
+                    }
+
+                    message.push_str("👉 Continue with your task.");
 
                     Ok(AutomationResult::Success(message))
                 } else {
@@ -451,25 +493,12 @@ impl AutomationRunner {
                         ));
                     }
 
-                    if !analysis.missing_tests.is_empty() {
-                        detailed_message.push_str("➕ **Consider Adding**:\n");
-                        for missing_test in &analysis.missing_tests {
-                            detailed_message.push_str(&format!("  • {}\n", missing_test));
-                        }
-                        detailed_message.push('\n');
-                    }
-
-                    detailed_message.push_str(&format!(
-                        "🛠️  **Next Steps**: {}\n\n",
-                        analysis.recommendations
-                    ));
                     detailed_message.push_str("📄 **Full Output**:\n");
                     detailed_message.push_str(combined_output.trim());
-                    detailed_message.push_str(&format!(
-                        "\n\nRun 'cd {} && {}' to retry",
-                        project.root.display(),
-                        tester.display_name()
-                    ));
+
+                    // Add the blocking message
+                    detailed_message
+                        .push_str("\n\n⛔ Must fix all test failures before continuing");
 
                     Ok(AutomationResult::Failure(detailed_message))
                 }
@@ -483,17 +512,13 @@ impl AutomationRunner {
                     ))
                 } else if !combined_output.trim().is_empty() {
                     Ok(AutomationResult::Failure(format!(
-                        "⛔ TESTS FAILED:\n\n{}\n\nRun 'cd {} && {}' to fix these test failures",
-                        combined_output.trim(),
-                        project.root.display(),
-                        tester.display_name()
+                        "⛔ TESTS FAILED:\n\n{}\n\n⛔ Must fix all test failures before continuing",
+                        combined_output.trim()
                     )))
                 } else {
-                    Ok(AutomationResult::Failure(format!(
-                        "⛔ BLOCKING: Run 'cd {} && {}' to fix test failures",
-                        project.root.display(),
-                        tester.display_name()
-                    )))
+                    Ok(AutomationResult::Failure(
+                        "⛔ Test failures detected. Must fix before continuing".to_string(),
+                    ))
                 }
             }
         }
@@ -588,31 +613,26 @@ impl AutomationRunner {
             }
         }
 
-        // List of possible test file patterns and locations
+        // List of possible test file patterns
         let test_patterns = vec![
             format!("test_{}.py", source_name),
             format!("{}_test.py", source_name),
             format!("test{}.py", source_name),
         ];
 
-        let test_directories = vec![
+        // Base test directories to search recursively
+        let base_test_directories = vec![
             project_root.join("tests"),
             project_root.join("test"),
-            project_root.join("tests").join("unit"),
-            project_root.join("tests").join("integration"),
-            project_root.join("test").join("unit"),
             project_root.to_path_buf(), // Same directory as source
             source_file.parent()?.to_path_buf(), // Source file's directory
         ];
 
-        // Search for test file in various locations
-        for test_dir in &test_directories {
-            for pattern in &test_patterns {
-                let test_file_path = test_dir.join(pattern);
-                if test_file_path.exists() && test_file_path.is_file() {
-                    log::debug!("Found test file: {}", test_file_path.display());
-                    return Some(test_file_path);
-                }
+        // Search recursively in test directories
+        for base_dir in &base_test_directories {
+            if let Some(test_file) = Self::find_test_file_recursive(base_dir, &test_patterns) {
+                log::debug!("Found test file: {}", test_file.display());
+                return Some(test_file);
             }
         }
 
@@ -620,6 +640,47 @@ impl AutomationRunner {
             "No test file found for source file: {}",
             source_file.display()
         );
+        None
+    }
+
+    /// Recursively search for test files matching the given patterns in a directory tree
+    fn find_test_file_recursive(dir: &Path, patterns: &[String]) -> Option<std::path::PathBuf> {
+        if !dir.exists() || !dir.is_dir() {
+            return None;
+        }
+
+        // First, check current directory for matching test files
+        for pattern in patterns {
+            let test_file_path = dir.join(pattern);
+            if test_file_path.exists() && test_file_path.is_file() {
+                return Some(test_file_path);
+            }
+        }
+
+        // Then recursively search subdirectories
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Skip hidden directories and common non-test directories
+                    if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                        if dir_name.starts_with('.')
+                            || dir_name == "__pycache__"
+                            || dir_name == "node_modules"
+                            || dir_name == ".git"
+                        {
+                            continue;
+                        }
+                    }
+
+                    // Recursively search the subdirectory
+                    if let Some(test_file) = Self::find_test_file_recursive(&path, patterns) {
+                        return Some(test_file);
+                    }
+                }
+            }
+        }
+
         None
     }
 }
