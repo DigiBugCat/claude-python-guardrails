@@ -266,7 +266,11 @@ impl PythonLinter {
     /// Get the arguments to run this linter with auto-fix on a specific file
     pub fn fix_args(&self, file_path: &str) -> Vec<String> {
         match self {
-            PythonLinter::Ruff => vec!["check".to_string(), "--fix".to_string(), file_path.to_string()],
+            PythonLinter::Ruff => vec![
+                "check".to_string(),
+                "--fix".to_string(),
+                file_path.to_string(),
+            ],
             PythonLinter::Flake8 => vec![], // Flake8 doesn't support auto-fix
             PythonLinter::Pylint => vec![], // Pylint doesn't support auto-fix
         }
