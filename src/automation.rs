@@ -311,23 +311,23 @@ impl AutomationRunner {
                                 detailed_message.push_str("\n\n");
                             }
 
-                            // Add AI reasoning
+                            // Add AI reasoning about whether linter is being overzealous
                             if !analysis.reasoning.trim().is_empty() {
                                 detailed_message.push_str("💡 **Analysis:**\n");
                                 detailed_message.push_str(&analysis.reasoning);
-                                detailed_message.push_str("\n\n");
+                                
+                                // Check if linter might be overzealous
+                                if analysis.reasoning.contains("style") 
+                                    || analysis.reasoning.contains("convention")
+                                    || analysis.reasoning.contains("optional") {
+                                    detailed_message.push_str("\n\n🤔 **Note:** Some of these might be style preferences rather than real issues.");
+                                }
                             }
-
-                            detailed_message.push_str(&format!(
-                                "📝 **Fix Command:** Run 'cd {} && {}' to address these issues",
-                                project.root.display(),
-                                linter.display_name()
-                            ));
                         } else {
                             detailed_message.push_str("✅ **AI Analysis Result:**\n");
                             detailed_message.push_str(&analysis.reasoning);
                             detailed_message.push_str(
-                                "\n\n👉 No real issues found. You can continue with your task.",
+                                "\n\n👉 Linter appears overzealous. You can continue with your task.",
                             );
 
                             // Return success if no real issues found
@@ -340,19 +340,13 @@ impl AutomationRunner {
                         log::warn!("AI analysis failed: {}", e);
                         // Fallback to showing raw output
                         format!(
-                            "⛔ LINT FAILURES:\n\n{}\n\nRun 'cd {} && {}' to fix these issues",
-                            combined_output.trim(),
-                            project.root.display(),
-                            linter.display_name()
+                            "⛔ LINT FAILURES:\n\n{}\n\n⚠️ Could not determine if linter is being overzealous (AI unavailable)",
+                            combined_output.trim()
                         )
                     }
                 }
             } else {
-                format!(
-                    "⛔ BLOCKING: Run 'cd {} && {}' to fix lint failures",
-                    project.root.display(),
-                    linter.display_name()
-                )
+                "⛔ Lint check failed".to_string()
             };
 
             Ok(AutomationResult::Failure(message))
@@ -488,12 +482,10 @@ impl AutomationRunner {
                     detailed_message.push_str("📄 **Full Output**:\n");
                     detailed_message.push_str(combined_output.trim());
                     
-                    // Add the strict blocking message matching bash script style
-                    detailed_message.push_str(&format!(
-                        "\n\n⛔ **BLOCKING: Must fix ALL test failures above before continuing**\n\nRun 'cd {} && {}' to retry",
-                        project.root.display(),
-                        tester.display_name()
-                    ));
+                    // Add the blocking message 
+                    detailed_message.push_str(
+                        "\n\n⛔ Must fix all test failures before continuing"
+                    );
 
                     Ok(AutomationResult::Failure(detailed_message))
                 }
@@ -507,17 +499,13 @@ impl AutomationRunner {
                     ))
                 } else if !combined_output.trim().is_empty() {
                     Ok(AutomationResult::Failure(format!(
-                        "⛔ TESTS FAILED:\n\n{}\n\n⛔ **BLOCKING: Must fix ALL test failures above before continuing**\n\nRun 'cd {} && {}' to fix these test failures",
-                        combined_output.trim(),
-                        project.root.display(),
-                        tester.display_name()
+                        "⛔ TESTS FAILED:\n\n{}\n\n⛔ Must fix all test failures before continuing",
+                        combined_output.trim()
                     )))
                 } else {
-                    Ok(AutomationResult::Failure(format!(
-                        "⛔ **BLOCKING: Must fix ALL test failures before continuing**\n\nRun 'cd {} && {}' to fix test failures",
-                        project.root.display(),
-                        tester.display_name()
-                    )))
+                    Ok(AutomationResult::Failure(
+                        "⛔ Test failures detected. Must fix before continuing".to_string()
+                    ))
                 }
             }
         }
