@@ -76,6 +76,10 @@ impl AutomationRunner {
 
     /// Handle smart-lint command from Claude Code hook
     pub async fn handle_smart_lint(&self) -> Result<AutomationResult> {
+        if std::env::var("DEBUG").unwrap_or_default() == "1" {
+            log::debug!("handle_smart_lint called");
+        }
+
         if !self.config.lint_enabled {
             log::debug!("Smart lint is disabled");
             return Ok(AutomationResult::NoAction);
@@ -121,6 +125,9 @@ impl AutomationRunner {
 
         // Discover Python project
         let project = PythonProject::discover(&file_dir)?;
+        if std::env::var("DEBUG").unwrap_or_default() == "1" {
+            log::debug!("Discovered Python project at: {}", project.root.display());
+        }
 
         // Try to acquire lock
         let _guard =
@@ -136,6 +143,10 @@ impl AutomationRunner {
 
     /// Handle smart-test command from Claude Code hook
     pub async fn handle_smart_test(&self) -> Result<AutomationResult> {
+        if std::env::var("DEBUG").unwrap_or_default() == "1" {
+            log::debug!("handle_smart_test called");
+        }
+
         if !self.config.test_enabled {
             log::debug!("Smart test is disabled");
             return Ok(AutomationResult::NoAction);
@@ -181,6 +192,9 @@ impl AutomationRunner {
 
         // Discover Python project
         let project = PythonProject::discover(&file_dir)?;
+        if std::env::var("DEBUG").unwrap_or_default() == "1" {
+            log::debug!("Discovered Python project at: {}", project.root.display());
+        }
 
         // Try to acquire lock
         let _guard =
@@ -201,7 +215,16 @@ impl AutomationRunner {
         source_file: &Path,
     ) -> Result<AutomationResult> {
         let linter = match project.preferred_linter() {
-            Some(linter) => linter,
+            Some(linter) => {
+                if std::env::var("DEBUG").unwrap_or_default() == "1" {
+                    log::debug!(
+                        "Found linter: {} (command: {})",
+                        linter.display_name(),
+                        linter.command()
+                    );
+                }
+                linter
+            }
             None => {
                 log::debug!("No Python linter found in project");
                 return Ok(AutomationResult::NoAction);
@@ -361,7 +384,16 @@ impl AutomationRunner {
         source_file: &Path,
     ) -> Result<AutomationResult> {
         let tester = match project.preferred_tester() {
-            Some(tester) => tester,
+            Some(tester) => {
+                if std::env::var("DEBUG").unwrap_or_default() == "1" {
+                    log::debug!(
+                        "Found tester: {} (command: {})",
+                        tester.display_name(),
+                        tester.command()
+                    );
+                }
+                tester
+            }
             None => {
                 log::debug!("No Python tester found in project");
                 return Ok(AutomationResult::NoAction);
@@ -532,6 +564,16 @@ impl AutomationRunner {
         working_dir: &Path,
         timeout_seconds: u64,
     ) -> Result<CommandOutput> {
+        // Debug logging to see exactly what command is being executed
+        if std::env::var("DEBUG").unwrap_or_default() == "1" {
+            log::debug!(
+                "Attempting to run command: {} {} in directory: {}",
+                command,
+                args.join(" "),
+                working_dir.display()
+            );
+        }
+
         // Create command
         let mut cmd = Command::new(command);
         cmd.args(args)
@@ -540,7 +582,12 @@ impl AutomationRunner {
             .stderr(std::process::Stdio::piped());
 
         // Spawn process
-        let mut child = cmd.spawn().context("Failed to spawn command")?;
+        let mut child = cmd.spawn().context(format!(
+            "Failed to spawn command: {} {} (working dir: {})",
+            command,
+            args.join(" "),
+            working_dir.display()
+        ))?;
 
         // Wait with timeout
         let result = self.wait_with_timeout(&mut child, Duration::from_secs(timeout_seconds))?;

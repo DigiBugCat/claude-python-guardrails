@@ -20,6 +20,7 @@ pub enum PythonFormatter {
 /// Represents different Python tools available for testing
 #[derive(Debug, Clone, PartialEq)]
 pub enum PythonTester {
+    UvPytest,
     Pytest,
     PytestModule,
     Unittest,
@@ -206,6 +207,11 @@ impl PythonProject {
     fn detect_available_testers() -> Vec<PythonTester> {
         let mut testers = Vec::new();
 
+        // Prioritize uv if available (modern Python project management)
+        if which("uv").is_ok() {
+            testers.push(PythonTester::UvPytest);
+        }
+
         if which("pytest").is_ok() {
             testers.push(PythonTester::Pytest);
         }
@@ -308,6 +314,7 @@ impl PythonTester {
     /// Get the command to run this tester
     pub fn command(&self) -> &'static str {
         match self {
+            PythonTester::UvPytest => "uv",
             PythonTester::Pytest => "pytest",
             PythonTester::PytestModule => "python",
             PythonTester::Unittest => "python",
@@ -317,6 +324,7 @@ impl PythonTester {
     /// Get the arguments to run this tester
     pub fn args(&self) -> Vec<&'static str> {
         match self {
+            PythonTester::UvPytest => vec!["run", "pytest"],
             PythonTester::Pytest => vec![],
             PythonTester::PytestModule => vec!["-m", "pytest"],
             PythonTester::Unittest => vec!["-m", "unittest", "discover"],
@@ -326,6 +334,7 @@ impl PythonTester {
     /// Get the human-readable name for error messages
     pub fn display_name(&self) -> &'static str {
         match self {
+            PythonTester::UvPytest => "uv run pytest",
             PythonTester::Pytest => "pytest",
             PythonTester::PytestModule => "python -m pytest",
             PythonTester::Unittest => "python -m unittest discover",
@@ -456,6 +465,9 @@ mod tests {
 
     #[test]
     fn test_tester_commands() {
+        assert_eq!(PythonTester::UvPytest.command(), "uv");
+        assert_eq!(PythonTester::UvPytest.args(), vec!["run", "pytest"]);
+
         assert_eq!(PythonTester::Pytest.command(), "pytest");
         assert_eq!(PythonTester::Pytest.args(), Vec::<&str>::new());
 
