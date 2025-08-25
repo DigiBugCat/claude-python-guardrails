@@ -1,6 +1,6 @@
 [package]
 name = "claude-python-guardrails"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 authors = ["Andrew Sulistio <andrew@example.com>"]
 description = "Claude Code Python automation hooks - AI-powered linting and testing automation (hooks-only)"
